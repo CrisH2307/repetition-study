@@ -45,6 +45,7 @@ type ConceptData struct {
 	Stability  float64
 	LastReview time.Time
 	Scheduled  bool // false until the first review or teach-back
+	DueAt      *time.Time
 }
 
 type SubjectData struct {
