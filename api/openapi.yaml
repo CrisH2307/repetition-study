@@ -1,0 +1,335 @@
+openapi: 3.0.3
+info:
+  title: Space Repetition API
+  version: 0.1.0
+  description: >
+    The contract every unit builds against. Schemas mirror internal/domain.
+    No auth today: every request acts as the seeded demo user.
+    Times are RFC 3339 UTC. IDs are UUID strings. Errors are {"error": "..."}.
+servers:
+  - url: http://localhost:8080
+paths:
+  /healthz:
+    get:
+      summary: Liveness check
+      responses:
+        "200":
+          description: Service is up
+          content:
+            application/json:
+              schema: {type: object, properties: {status: {type: string, example: ok}}}
+  /v1/subjects:
+    get:
+      summary: List subjects
+      responses:
+        "200": {description: Subjects, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Subject"}}}}}
+    post:
+      summary: Add a subject
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: "#/components/schemas/SubjectCreate"}}}
+      responses:
+        "201": {description: Created, content: {application/json: {schema: {$ref: "#/components/schemas/Subject"}}}}
+        "400": {$ref: "#/components/responses/Error"}
+  /v1/plan/generate:
+    post:
+      summary: Generate the weekly plan, replacing unlocked blocks
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, required: [week_start], properties: {week_start: {type: string, format: date}}}}}
+      responses:
+        "200": {description: The plan, content: {application/json: {schema: {$ref: "#/components/schemas/Plan"}}}}
+        "400": {$ref: "#/components/responses/Error"}
+  /v1/plan:
+    get:
+      summary: Get the plan for a week
+      parameters:
+        - {name: week, in: query, required: true, description: Monday of the week, schema: {type: string, format: date}}
+      responses:
+        "200": {description: The plan, content: {application/json: {schema: {$ref: "#/components/schemas/Plan"}}}}
+        "400": {$ref: "#/components/responses/Error"}
+  /v1/plan/blocks/{id}:
+    patch:
+      summary: Edit a block (move it, resize it, lock it)
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                starts_at: {type: string, format: date-time}
+                minutes: {type: integer, minimum: 1}
+                locked: {type: boolean}
+      responses:
+        "200": {description: Updated block, content: {application/json: {schema: {$ref: "#/components/schemas/PlanBlock"}}}}
+        "404": {$ref: "#/components/responses/Error"}
+  /v1/teach/sessions:
+    post:
+      summary: Start a teach-back session on a concept
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, required: [concept_id], properties: {concept_id: {type: string}}}}}
+      responses:
+        "201": {description: Session, content: {application/json: {schema: {$ref: "#/components/schemas/TeachSession"}}}}
+        "404": {$ref: "#/components/responses/Error"}
+  /v1/teach/sessions/{id}/turns:
+    post:
+      summary: Send one turn. The AI student replies with one question, streamed.
+      description: >
+        Response is text/event-stream. Events: `token` (data {"text": "..."}),
+        `done` (data {}), `error` (data {"error": "..."}). Transcript and latex are untrusted data.
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [transcript]
+              properties:
+                transcript: {type: string}
+                latex: {type: string}
+      responses:
+        "200": {description: Server-sent events, content: {text/event-stream: {schema: {type: string}}}}
+        "404": {$ref: "#/components/responses/Error"}
+  /v1/teach/sessions/{id}/finish:
+    post:
+      summary: End the session. Runs the checker and updates the schedule.
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200": {description: Report, content: {application/json: {schema: {$ref: "#/components/schemas/Report"}}}}
+        "404": {$ref: "#/components/responses/Error"}
+  /v1/teach/sessions/{id}/report:
+    get:
+      summary: Get the cited report after the attempt
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200": {description: Report, content: {application/json: {schema: {$ref: "#/components/schemas/Report"}}}}
+        "404": {$ref: "#/components/responses/Error"}
+  /v1/reviews/due:
+    get:
+      summary: Concepts and cards due now
+      responses:
+        "200": {description: Due items, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/DueItem"}}}}}
+  /v1/cards/{id}/review:
+    post:
+      summary: Grade a card review
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, required: [grade], properties: {grade: {$ref: "#/components/schemas/Grade"}}}}}
+      responses:
+        "200": {description: The appended event, content: {application/json: {schema: {$ref: "#/components/schemas/ReviewEvent"}}}}
+        "404": {$ref: "#/components/responses/Error"}
+  /v1/cards/{id}:
+    patch:
+      summary: Edit a card
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, properties: {front: {type: string}, back: {type: string}}}}}
+      responses:
+        "200": {description: Updated card, content: {application/json: {schema: {$ref: "#/components/schemas/Card"}}}}
+        "404": {$ref: "#/components/responses/Error"}
+  /v1/concepts/{id}/override:
+    post:
+      summary: Move a concept's next review date by hand
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, required: [due_at, reason], properties: {due_at: {type: string, format: date-time}, reason: {type: string}}}}}
+      responses:
+        "200": {description: The appended manual_override event, content: {application/json: {schema: {$ref: "#/components/schemas/ReviewEvent"}}}}
+        "404": {$ref: "#/components/responses/Error"}
+  /v1/analytics/further-planning:
+    get:
+      summary: Recall and explanation per concept, with next week's hours
+      parameters:
+        - {name: week, in: query, required: true, schema: {type: string, format: date}}
+      responses:
+        "200": {description: Progress, content: {application/json: {schema: {$ref: "#/components/schemas/FurtherPlanning"}}}}
+  /v1/digest/today:
+    get:
+      summary: Today's digest, one line per subject
+      responses:
+        "200": {description: Digest, content: {application/json: {schema: {$ref: "#/components/schemas/Digest"}}}}
+components:
+  parameters:
+    Id: {name: id, in: path, required: true, schema: {type: string}}
+  responses:
+    Error:
+      description: Error
+      content: {application/json: {schema: {type: object, required: [error], properties: {error: {type: string}}}}}
+  schemas:
+    ClaimLabel: {type: string, enum: [supported, partial, contradicted, absent]}
+    Grade: {type: string, enum: [again, hard, good, easy]}
+    EventType: {type: string, enum: [card_review, teach_back, manual_override]}
+    SourceKind: {type: string, enum: [course, allowlist]}
+    Level: {type: string, enum: [beginner, intermediate, advanced]}
+    PlanKind: {type: string, enum: [review, teach, new]}
+    Source:
+      type: object
+      required: [id, kind, title, text]
+      properties:
+        id: {type: string}
+        kind: {$ref: "#/components/schemas/SourceKind"}
+        title: {type: string}
+        url: {type: string}
+        publisher: {type: string}
+        license: {type: string}
+        reviewed_by: {type: string}
+        reviewed_at: {type: string, format: date-time}
+        text: {type: string}
+    SubjectCreate:
+      type: object
+      required: [name, weekly_hours, level]
+      properties:
+        name: {type: string}
+        weekly_hours: {type: number, minimum: 0}
+        level: {$ref: "#/components/schemas/Level"}
+        exam_date: {type: string, format: date}
+        weight: {type: number, minimum: 0, default: 1}
+    Subject:
+      allOf:
+        - $ref: "#/components/schemas/SubjectCreate"
+        - {type: object, required: [id, weight], properties: {id: {type: string}}}
+    Claim:
+      type: object
+      required: [id, concept_id, text, source_id, locator, required]
+      properties:
+        id: {type: string}
+        concept_id: {type: string}
+        text: {type: string}
+        source_id: {type: string}
+        locator: {type: string}
+        required: {type: boolean}
+    Concept:
+      type: object
+      required: [id, subject_id, name, claims]
+      properties:
+        id: {type: string}
+        subject_id: {type: string}
+        name: {type: string}
+        claims: {type: array, items: {$ref: "#/components/schemas/Claim"}}
+    Citation:
+      type: object
+      required: [source_id, quote, locator]
+      properties:
+        source_id: {type: string}
+        quote: {type: string, description: Exact substring of the approved source text, verified by code}
+        locator: {type: string}
+    ClaimResult:
+      type: object
+      required: [claim_id, student_text, label, citation, correction, probe_hint]
+      properties:
+        claim_id: {type: string, nullable: true}
+        student_text: {type: string}
+        label: {$ref: "#/components/schemas/ClaimLabel"}
+        citation: {allOf: [{$ref: "#/components/schemas/Citation"}], nullable: true}
+        correction: {type: string, nullable: true, description: Present only with a valid citation}
+        probe_hint: {type: string, nullable: true, description: Never contains source text}
+    ReviewEvent:
+      type: object
+      required: [id, event_type, concept_id, card_id, grade, due_before, due_after, stability_before, stability_after, payload, created_at]
+      properties:
+        id: {type: string}
+        event_type: {$ref: "#/components/schemas/EventType"}
+        concept_id: {type: string}
+        card_id: {type: string, nullable: true}
+        grade: {allOf: [{$ref: "#/components/schemas/Grade"}], nullable: true}
+        due_before: {type: string, format: date-time}
+        due_after: {type: string, format: date-time}
+        stability_before: {type: number}
+        stability_after: {type: number}
+        payload: {type: object, additionalProperties: true}
+        created_at: {type: string, format: date-time}
+    PlanBlock:
+      type: object
+      required: [id, subject_id, concept_id, kind, starts_at, minutes, reason, locked]
+      properties:
+        id: {type: string}
+        subject_id: {type: string}
+        concept_id: {type: string, nullable: true}
+        kind: {$ref: "#/components/schemas/PlanKind"}
+        starts_at: {type: string, format: date-time}
+        minutes: {type: integer}
+        reason: {type: string}
+        locked: {type: boolean}
+    Plan:
+      type: object
+      required: [week_start, blocks]
+      properties:
+        week_start: {type: string, format: date-time}
+        blocks: {type: array, items: {$ref: "#/components/schemas/PlanBlock"}}
+    Card:
+      type: object
+      required: [id, concept_id, claim_id, front, back]
+      properties:
+        id: {type: string}
+        concept_id: {type: string}
+        claim_id: {type: string, nullable: true}
+        front: {type: string}
+        back: {type: string}
+    DueItem:
+      type: object
+      required: [concept_id, concept_name, card_id, card, due_at]
+      properties:
+        concept_id: {type: string}
+        concept_name: {type: string}
+        card_id: {type: string, nullable: true}
+        card: {allOf: [{$ref: "#/components/schemas/Card"}], nullable: true}
+        due_at: {type: string, format: date-time}
+    TeachSession:
+      type: object
+      required: [id, concept_id]
+      properties:
+        id: {type: string}
+        concept_id: {type: string}
+    Report:
+      type: object
+      required: [session_id, concept_id, results, schedule]
+      properties:
+        session_id: {type: string}
+        concept_id: {type: string}
+        results: {type: array, items: {$ref: "#/components/schemas/ClaimResult"}}
+        schedule: {allOf: [{$ref: "#/components/schemas/ReviewEvent"}], nullable: true, description: The teach_back event, so the date change is visible}
+    ConceptProgress:
+      type: object
+      required: [concept_id, name, recall, explanation, next_due]
+      properties:
+        concept_id: {type: string}
+        name: {type: string}
+        recall: {type: number, nullable: true, description: 0 to 1, from card reviews}
+        explanation: {type: number, nullable: true, description: 0 to 1, from teach-backs}
+        next_due: {type: string, format: date-time, nullable: true}
+    SubjectProgress:
+      type: object
+      required: [subject_id, name, concepts, next_week_hours]
+      properties:
+        subject_id: {type: string}
+        name: {type: string}
+        concepts: {type: array, items: {$ref: "#/components/schemas/ConceptProgress"}}
+        next_week_hours: {type: number}
+    FurtherPlanning:
+      type: object
+      required: [week_start, subjects]
+      properties:
+        week_start: {type: string, format: date-time}
+        subjects: {type: array, items: {$ref: "#/components/schemas/SubjectProgress"}}
+    Digest:
+      type: object
+      required: [date, items]
+      properties:
+        date: {type: string, format: date-time}
+        items:
+          type: array
+          items:
+            type: object
+            required: [subject_id, subject_name, due_count, minutes]
+            properties:
+              subject_id: {type: string}
+              subject_name: {type: string}
+              due_count: {type: integer}
+              minutes: {type: integer}
