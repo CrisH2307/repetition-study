@@ -1,0 +1,1 @@
+- llm: retry helper, Gemini stream, Anthropic JSON built; tests pass against httptest stubs (real API unverified)
