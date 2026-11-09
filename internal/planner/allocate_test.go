@@ -161,7 +161,7 @@ func TestNewShareReserved(t *testing.T) {
 			n++
 		}
 	}
-	if want := 6; n != want { // 30% of 20 blocks
+	if want := 4; n != want { // 30% of 14 blocks, rounded
 		t.Fatalf("want %d new blocks of %d, got %d", want, len(al.Blocks), n)
 	}
 }

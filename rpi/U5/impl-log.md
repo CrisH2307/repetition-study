@@ -1,0 +1,2 @@
+- allocate.go + tests: 8 pass
+- allocate.go + tests: 8 pass
