@@ -38,5 +38,14 @@ Working rules
 - When context usage passes 50%, stop and ask Cris about handing over.
 - Final report under 200 words: done, tests run with results, risks, unverified.
 
-Repo: CrisH2307/repetition-study. Deadline: 5pm America/Toronto, 2026-11-09.
-Full plan: docs/PLAN.md. Your task comes from rpi/<unit>/PROMPT.md through /unit.
+Repo: CrisH2307/repetition-study. The hackathon deadline (2026-11-09) has passed;
+dates now come from docs/ROADMAP.md. Hackathon plan: docs/PLAN.md.
+Your task comes from rpi/<unit>/PROMPT.md through /unit.
+
+Current phase (proposed, pending D24): Phase 0, stabilize and prove the thesis.
+Read in this order:
+1. docs/STATUS.md
+2. docs/DECISIONS.md
+3. docs/ROADMAP.md
+4. rpi/<unit>/PROMPT.md
+Proposals in docs/DECISIONS.md are not decisions until marked Decided there.

@@ -1,3 +1,7 @@
+> Note (2026-11-09 evening): this is the hackathon plan, kept as a record. For
+> forward work it is superseded by docs/ROADMAP.md; decisions live in
+> docs/DECISIONS.md and current state in docs/STATUS.md.
+
 # Space Repetition Hackathon Plan
 
 Nov 9, 2026 · @Cris
