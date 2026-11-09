@@ -1,0 +1,14 @@
+{
+  "U0": {"branch": "feature/setup", "allow": ["*"]},
+  "U1": {"branch": "feature/content-pack", "allow": ["content/", "scripts/parse_pdf.py", "scripts/check_labels.py", "eval/data/", "rpi/U1/"]},
+  "U2": {"branch": "feature/teach-engine", "allow": ["internal/teach/", "internal/llm/", "rpi/U2/"]},
+  "U3": {"branch": "feature/checker", "allow": ["internal/checker/", "eval/", "cmd/evalcheck/", "rpi/U3/"], "deny": ["eval/data/"]},
+  "U4": {"branch": "feature/scheduler", "allow": ["internal/srs/", "rpi/U4/"]},
+  "U5": {"branch": "feature/planner", "allow": ["internal/planner/", "rpi/U5/"]},
+  "U6": {"branch": "feature/digest", "allow": ["internal/digest/", "rpi/U6/"]},
+  "U7": {"branch": "feature/demo-ui", "allow": ["web/", "rpi/U7/"]},
+  "GATE": {"branch": "feature/gate-results", "allow": ["eval/results/", "rpi/GATE/"]},
+  "INT": {"branch": "feature/integration", "allow": ["cmd/", "internal/app/", "Makefile", "rpi/INT/"]},
+  "QA": {"branch": "chore/qa-run", "allow": ["qa/", "rpi/QA/"]},
+  "RELEASE": {"branch": "chore/release", "allow": ["demo/", "rpi/RELEASE/"]}
+}
