@@ -1,1 +1,2 @@
 - llm: retry helper, Gemini stream, Anthropic JSON built; tests pass against httptest stubs (real API unverified)
+- teach: StudentContext, probe order, 2-sentence cap, Engine Start/Turn/Finish, MemStore; go test -race ./internal/teach passes (fakes)
