@@ -1,0 +1,1 @@
+- checker: verify.go + checker.go + tests; go test ./internal/checker/... ok (correct quote, paraphrase, unapproved, injection, hint, absent)
