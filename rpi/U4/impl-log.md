@@ -1,0 +1,2 @@
+- Added pure logic (grade mapping, FSRS wrapper, interleave): unit tests and benchmark pass, 1,000 concepts about 2-3 ms.
+- Added Postgres scheduler (ApplyTeachBack, ReviewCard, Override, Due, gap cards, idempotent event ids): DB tests pass, also with -race and twice in a row.
