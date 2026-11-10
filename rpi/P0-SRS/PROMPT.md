@@ -10,3 +10,5 @@ Steps
 
 Done when: a test retries Finish after a simulated restart and sees exactly one event; after `go test ./internal/srs/...` the dev database has no new rows; the append-only trigger test still passes.
 Push the branch, then open a PR into qa with `gh pr create --base qa` (body: "Closes #<issue>", tests run, what is unverified). Never merge. Stop. Report under 200 words.
+
+Contract note (from the P0-CONTRACT report, PR #28): idempotent teach-back is the new interface `SessionScheduler.ApplyTeachBackSession` in `internal/domain`, keyed by session id, with the unique index `review_events_teach_back_session_uniq`. Implement that interface in `internal/srs`. The old `Scheduler.ApplyTeachBack` stays as it is.

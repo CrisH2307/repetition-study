@@ -13,3 +13,5 @@ Steps
 
 Done when: a test starts a session, restarts the store, and Finish still works; `claim_labels` rows exist after Finish; `go test -race ./internal/store/...` is green after `make up migrate`.
 Push the branch, then open a PR into qa with `gh pr create --base qa` (body: "Closes #<issue>", tests run, what is unverified). Never merge. Stop. Report under 200 words.
+
+Contract note (from the P0-CONTRACT report, PR #28): implement `domain.TeachStore` and `domain.PackLoader.LoadPack`. `Pack` includes `Subject`, `SourceBlock`s and concepts with claims. Source blocks go in the new table `source_blocks` (migration 0003).
