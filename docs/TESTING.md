@@ -192,7 +192,7 @@ D3, D5 and D6 are the heart of the project. If they fail, nothing else matters. 
 
 ## Part F. How to report a problem
 
-Send Cris one message per problem, with these four lines:
+Open a new issue on GitHub (the Issues tab, then "New issue", then "Problem found while testing") and answer the four questions. One problem per issue. You can also send the same four lines to Cris in a message:
 1. What I did (steps, in order)
 2. What I expected
 3. What happened (paste the message or a screenshot)

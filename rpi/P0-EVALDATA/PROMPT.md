@@ -1,4 +1,4 @@
-Unit P0-EVALDATA, wave 1, after P0-HYG is on integration/p0. Branch `feature/eval-data`. Model: Opus 5.5, effort medium for the math content, then Sonnet 5.5 for the tooling.
+Unit P0-EVALDATA, wave 1, after P0-HYG is merged into qa. Branch `feature/eval-data`. Model: Opus 5.5, effort medium for the math content, then Sonnet 5.5 for the tooling.
 Files: `eval/data/`, `content/`, `scripts/check_labels.py`, `rpi/P0-EVALDATA/`.
 Read first: `docs/improved/strategy-review-fable.md` sections 1.4 items 6 to 8, 4.6 and D10, D20; `docs/PLAN.md` gate table; `content/unit.json`. The real PDF is in gitignored `content/private/`.
 
@@ -15,4 +15,4 @@ Steps
 6. A one-page plain-language guide for Dino, `eval/data/LABELLING.md`, with an example of each label.
 
 Done when: the files exist, `check_labels.py` has a test with fake label files, and Dino has the guide. The real labels are Dino's task, not yours.
-Do not open a PR. Push the branch and stop. Report under 200 words.
+Push the branch, then open a PR into qa with `gh pr create --base qa` (body: "Closes #<issue>", tests run, what is unverified). Never merge. Stop. Report under 200 words.

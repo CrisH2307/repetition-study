@@ -14,7 +14,7 @@ Done as libraries with tests: contract, schema, scheduler, planner, checker, tea
 
 Goal: the loop runs end to end on one unit with real models, and gate G0 has real numbers. Not in Phase 0: polish, upload, accounts, digest, voice, timed calendar blocks.
 
-Cris merges between waves. The main agent merges finished branches into a staging branch `integration/p0` (never `qa` or `main`) so the next wave can start without waiting.
+Every unit is a GitHub issue, then a branch, then a PR into `qa` that Cris merges (flow in `docs/CLAUDE-CODE-SETUP.md`). A wave starts when the PRs it depends on are merged.
 
 | Wave | Unit | Branch | Work |
 | --- | --- | --- | --- |

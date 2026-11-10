@@ -1,4 +1,4 @@
-Unit P0-OUTAGE, wave 2, after P0-CITE, P0-CONTRACT and P0-SRS are on integration/p0. Branch `fix/checker-outage`. Model: Opus 5.5, effort high. Run `/code-review medium` before you report.
+Unit P0-OUTAGE, wave 2, after P0-CITE, P0-CONTRACT and P0-SRS are merged into qa. Branch `fix/checker-outage`. Model: Opus 5.5, effort high. Run `/code-review medium` before you report.
 Files: `internal/teach/`, `rpi/P0-OUTAGE/`.
 Read first: `docs/improved/strategy-review-fable.md` section 1.4 item 4, section 4.2 (F6, F7), 4.4 and 4.5, `internal/teach/engine.go` near `finalize`.
 
@@ -11,4 +11,4 @@ Steps
 4. Do not add a per-turn strong-model check. Per-turn matching is Phase 1.
 
 Done when: a test with a failing checker returns `unchecked` and `review_events` gains no row; a retry after the checker recovers writes one event and gap cards; `go test -race ./internal/teach/...` is green.
-Do not open a PR. Push the branch and stop. Report under 200 words.
+Push the branch, then open a PR into qa with `gh pr create --base qa` (body: "Closes #<issue>", tests run, what is unverified). Never merge. Stop. Report under 200 words.

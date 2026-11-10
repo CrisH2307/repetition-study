@@ -1,4 +1,4 @@
-Unit P0-CITE, wave 1. Branch `fix/citation-normalize` from integration/p0 (or qa). Model: Opus 5.5, effort high. Run `/code-review medium` on your branch before you report.
+Unit P0-CITE, wave 1. Branch `fix/citation-normalize` from qa. Model: Opus 5.5, effort high. Run `/code-review medium` on your branch before you report.
 Files: `internal/cite/`, `internal/checker/`, `internal/teach/engine.go`, `internal/teach/engine_test.go`, `rpi/P0-CITE/`.
 Read first: `docs/improved/strategy-review-fable.md` section 1.4 items 2 and 3 and section 4.2 (F1, F8), `internal/checker/verify.go`, `internal/teach/engine.go` near `finalize`.
 
@@ -12,4 +12,4 @@ Steps
 
 Do not change the contract. If `Citation` needs a new field, stop and ask Cris.
 Done when: new tests fail before and pass after; `go test -race ./internal/...` is green; `git grep -n "strings.Contains" internal/teach internal/checker` shows no quote check outside `internal/cite`.
-Do not open a PR. Push the branch and stop. Report under 200 words.
+Push the branch, then open a PR into qa with `gh pr create --base qa` (body: "Closes #<issue>", tests run, what is unverified). Never merge. Stop. Report under 200 words.
