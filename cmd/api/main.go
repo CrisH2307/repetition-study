@@ -1,26 +1,46 @@
-// Command api serves the HTTP API. U0 ships /healthz only. INT wires the rest.
+// Command api serves the HTTP API. All wiring lives in internal/app.
 package main
 
 import (
+	"context"
+	"errors"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/CrisH2307/repetition-study/internal/app"
 )
 
-func newMux() *http.ServeMux {
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"status":"ok"}`))
-	})
-	return mux
-}
-
 func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	srv, closeDB, err := app.Build(ctx, app.Config{
+		DatabaseURL:  os.Getenv("DATABASE_URL"),
+		StudentModel: os.Getenv("STUDENT_MODEL"),
+		CheckerModel: os.Getenv("CHECKER_MODEL"),
+		Log:          slog.Default(),
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer closeDB()
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
-	log.Printf("listening on :%s", port)
-	log.Fatal(http.ListenAndServe(":"+port, newMux()))
+	srv.Addr = ":" + port
+	go func() {
+		<-ctx.Done()
+		sctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		srv.Shutdown(sctx)
+	}()
+	log.Printf("listening on %s", srv.Addr)
+	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+		log.Fatal(err)
+	}
 }
