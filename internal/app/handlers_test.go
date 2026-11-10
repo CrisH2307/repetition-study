@@ -176,3 +176,20 @@ func TestBadInput(t *testing.T) {
 		t.Errorf("turn on unknown session: got %d, want 404", rec.Code)
 	}
 }
+
+type cancelingEngine struct{ *fakes.TeachEngine }
+
+func (cancelingEngine) Finish(context.Context, string) (domain.Report, error) {
+	return domain.Report{}, context.Canceled
+}
+
+// A caller that hangs up mid-Finish is not a server error.
+func TestFinishCanceledByCaller(t *testing.T) {
+	clock := fakes.NewClock()
+	h := NewHandler(Deps{Teach: cancelingEngine{&fakes.TeachEngine{}}, Sched: &fakes.Scheduler{Clock: clock},
+		Planner: fakes.Planner{}, Subjects: &memSubjects{}, Clock: clock})
+	rec := do(h, "POST", "/v1/teach/sessions/x/finish", "")
+	if rec.Code != 499 || !strings.Contains(rec.Body.String(), `"error"`) {
+		t.Fatalf("got %d %s, want 499 with an error body", rec.Code, rec.Body)
+	}
+}

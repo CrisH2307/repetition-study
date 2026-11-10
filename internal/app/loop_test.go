@@ -297,13 +297,11 @@ func runLoop(t *testing.T, e *env) {
 		t.Errorf("repeat finish wrote %d teach_back events, want %d", got, afterOne)
 	}
 
-	// The report endpoint returns the same report when the engine can look it up.
-	if _, ok := e.d.Teach.(domain.ReportReader); ok {
-		var got domain.Report
-		e.call("GET", "/v1/teach/sessions/"+ts.ID+"/report", "", 200, &got)
-		if got.Schedule == nil || got.Schedule.ID != rep.Schedule.ID || got.Status != domain.ReportChecked {
-			t.Errorf("report endpoint = %+v", got)
-		}
+	// The report endpoint returns the same report.
+	var got domain.Report
+	e.call("GET", "/v1/teach/sessions/"+ts.ID+"/report", "", 200, &got)
+	if got.Schedule == nil || got.Schedule.ID != rep.Schedule.ID || got.Status != domain.ReportChecked {
+		t.Errorf("report endpoint = %+v", got)
 	}
 }
 
@@ -347,7 +345,7 @@ func (failingLLM) JSON(context.Context, domain.LLMRequest, any) error {
 }
 
 // With the checker down, Finish still answers, the report is unchecked and no
-// teach_back event is written, so no review date moves. Needs P0-OUTAGE (#20).
+// teach_back event is written, so no review date moves.
 func TestCheckerDownGivesUncheckedReport(t *testing.T) {
 	e := newEnv(t, &fakes.LLM{Reply: "Why does that happen?"}, failingLLM{}, "")
 	before := e.teachBacks()
@@ -364,5 +362,10 @@ func TestCheckerDownGivesUncheckedReport(t *testing.T) {
 	}
 	if n := e.count(`SELECT count(*) FROM cards WHERE concept_id = $1`, fxConcept); n != 0 {
 		t.Errorf("%d cards made from an unchecked session", n)
+	}
+	var got domain.Report
+	e.call("GET", "/v1/teach/sessions/"+ts.ID+"/report", "", 200, &got)
+	if got.Status != domain.ReportUnchecked {
+		t.Errorf("report endpoint status %q, want unchecked", got.Status)
 	}
 }

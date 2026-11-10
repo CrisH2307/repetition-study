@@ -51,7 +51,11 @@ func NewHandler(d Deps) http.Handler {
 		d.Log = slog.Default()
 	}
 	a := &api{Deps: d}
-	a.reports, _ = d.Teach.(domain.ReportReader)
+	rr, ok := d.Teach.(domain.ReportReader)
+	if !ok {
+		panic("app: the teach engine must implement domain.ReportReader")
+	}
+	a.reports = rr
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { writeJSON(w, 200, map[string]string{"status": "ok"}) })
 	mux.HandleFunc("GET /v1/subjects", a.listSubjects)
@@ -79,6 +83,13 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 func (a *api) fail(w http.ResponseWriter, r *http.Request, err error) {
 	code, msg := 500, "internal error"
 	switch {
+	case errors.Is(err, context.Canceled):
+		// The caller hung up (Finish returns ctx.Err()). Nobody is listening, so log quietly.
+		a.Log.Info("request canceled by caller", "method", r.Method, "path", r.URL.Path)
+		writeJSON(w, 499, map[string]string{"error": "request canceled"})
+		return
+	case errors.Is(err, context.DeadlineExceeded):
+		code, msg = 504, "timed out"
 	case isNotFound(err):
 		code, msg = 404, "not found"
 	case strings.Contains(err.Error(), "already finished"):
@@ -320,10 +331,6 @@ func (a *api) finish(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *api) report(w http.ResponseWriter, r *http.Request) {
-	if a.reports == nil {
-		writeJSON(w, 501, map[string]string{"error": "report lookup is not available"})
-		return
-	}
 	rep, err := a.reports.GetReport(r.Context(), r.PathValue("id"))
 	if err != nil {
 		a.fail(w, r, err)
@@ -332,18 +339,10 @@ func (a *api) report(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, normalize(rep))
 }
 
-// normalize makes a report match the contract: arrays are never null, and an
-// engine that leaves Status empty is read from Schedule (set means the checker
-// ran). ponytail: the Status fallback can go once P0-OUTAGE sets Status itself.
+// normalize makes sure the results array is never null.
 func normalize(rep domain.Report) domain.Report {
 	if rep.Results == nil {
 		rep.Results = []domain.ClaimResult{}
-	}
-	if rep.Status == "" {
-		rep.Status = domain.ReportUnchecked
-		if rep.Schedule != nil {
-			rep.Status = domain.ReportChecked
-		}
 	}
 	return rep
 }
