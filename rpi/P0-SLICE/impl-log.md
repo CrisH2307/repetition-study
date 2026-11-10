@@ -1,0 +1,3 @@
+- Scaffolded web app, API client, SSE parser, KaTeX preview: `npm run build` passes.
+- Pages: pick, teach (stream, error state), self-grade, report (checked and unchecked): 4 vitest tests pass.
+- Real server (fake models) through Vite proxy: sessions, SSE and finish shapes match the types (checked with curl, not in a browser).
