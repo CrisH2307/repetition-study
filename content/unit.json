@@ -24,7 +24,7 @@
         {
           "id": "00000000-0000-0000-0000-000000020101",
           "concept_id": "00000000-0000-0000-0000-000000000101",
-          "text": "If T^X ~ Exp(λ1) and T^Y ~ Exp(λ2) are independent first-arrival times, then P(T^X < T^Y) = λ1/(λ1+λ2).",
+          "text": "If T1 ~ Exp(λ1) and T2 ~ Exp(λ2) are independent, then P(T1 < T2) = λ1/(λ1+λ2).",
           "source_id": "00000000-0000-0000-0000-0000000000b1",
           "locator": "p.2, Ex 3.2",
           "required": true
@@ -32,7 +32,7 @@
         {
           "id": "00000000-0000-0000-0000-000000020102",
           "concept_id": "00000000-0000-0000-0000-000000000101",
-          "text": "The first time T = min(T^X, T^Y) at which at least one of two independent exponential arrivals has happened follows Exp(λ1+λ2).",
+          "text": "The minimum min(T1, T2) of two independent exponential times with rates λ1 and λ2 is Exp(λ1+λ2).",
           "source_id": "00000000-0000-0000-0000-0000000000b1",
           "locator": "p.3, Ex 3.3 (cont.)",
           "required": true
@@ -40,7 +40,7 @@
         {
           "id": "00000000-0000-0000-0000-000000020103",
           "concept_id": "00000000-0000-0000-0000-000000000101",
-          "text": "For independent service times X1 ~ Exp(λ1) and X2 ~ Exp(λ2), P_A = P(X1 < X2) is found by conditioning on X1 = t, where P(X1 < X2 | X1 = t) = e^{-λ2 t}, which gives P_A = λ1/(λ1+λ2).",
+          "text": "P(T1 < T2) is derived by conditioning on T1 = t, using P(T2 > t) = e^{-λ2 t}, and integrating against the density λ1 e^{-λ1 t}.",
           "source_id": "00000000-0000-0000-0000-0000000000b1",
           "locator": "p.10, Q6",
           "required": true
@@ -48,10 +48,10 @@
         {
           "id": "00000000-0000-0000-0000-000000020104",
           "concept_id": "00000000-0000-0000-0000-000000000101",
-          "text": "In the two-server system of Q6, the probability that B is still in the system when you move to server 2 is P_B = P_A + (1-P_A)P_A = λ1(λ1+2λ2)/(λ1+λ2)^2.",
+          "text": "An Exp(λ) time has mean 1/λ, so a stated mean m converts to the rate 1/m.",
           "source_id": "00000000-0000-0000-0000-0000000000b1",
-          "locator": "p.10, Q6",
-          "required": false
+          "locator": "p.5, Q1",
+          "required": true
         }
       ]
     },
@@ -63,7 +63,7 @@
         {
           "id": "00000000-0000-0000-0000-000000020201",
           "concept_id": "00000000-0000-0000-0000-000000000102",
-          "text": "If X(t) and Y(t) are independent Poisson processes with rates λ1 and λ2, then X(t)+Y(t) is a Poisson process with rate λ1+λ2 (cited as Proposition 1.1 in lecture note 3).",
+          "text": "If X(t) and Y(t) are independent Poisson processes with rates λ1 and λ2, then X(t)+Y(t) is a Poisson process with rate λ1+λ2.",
           "source_id": "00000000-0000-0000-0000-0000000000b1",
           "locator": "p.2, Ex 3.2",
           "required": true
@@ -71,7 +71,7 @@
         {
           "id": "00000000-0000-0000-0000-000000020202",
           "concept_id": "00000000-0000-0000-0000-000000000102",
-          "text": "The probability that exactly four customers arrive at the two stores in the first hour is P(X(1)+Y(1)=4) = e^{-(λ1+λ2)} (λ1+λ2)^4 / 4!.",
+          "text": "In a Poisson process of rate λ, the count in time t is Poisson(λt): P(N(t)=k) = e^{-λt}(λt)^k/k!.",
           "source_id": "00000000-0000-0000-0000-0000000000b1",
           "locator": "p.2, Ex 3.2",
           "required": true
@@ -79,7 +79,7 @@
         {
           "id": "00000000-0000-0000-0000-000000020203",
           "concept_id": "00000000-0000-0000-0000-000000000102",
-          "text": "P(X(1)=4 | X(1)+Y(1)=4) = (λ1/(λ1+λ2))^4, found by rewriting the event as X(1)=4, Y(1)=0 and using independence.",
+          "text": "To get P(X(1)=k | X(1)+Y(1)=k), rewrite the event as {X(1)=k, Y(1)=0}, split it by independence, and divide by the Poisson(λ1+λ2) probability of the total.",
           "source_id": "00000000-0000-0000-0000-0000000000b1",
           "locator": "p.2, Ex 3.2",
           "required": true
@@ -87,7 +87,7 @@
         {
           "id": "00000000-0000-0000-0000-000000020204",
           "concept_id": "00000000-0000-0000-0000-000000000102",
-          "text": "If T ~ Exp(λ2), then P(X(T)=k) = (λ2/(λ1+λ2)) (λ1/(λ1+λ2))^k, found by integrating P(X(t)=k) against the density of T.",
+          "text": "For an independent random time T, P(X(T)=k) is found by integrating P(X(t)=k) against the density of T.",
           "source_id": "00000000-0000-0000-0000-0000000000b1",
           "locator": "p.2, Ex 3.2",
           "required": true
@@ -180,7 +180,7 @@
         {
           "id": "00000000-0000-0000-0000-000000020501",
           "concept_id": "00000000-0000-0000-0000-000000000105",
-          "text": "The stationary distribution π of a finite-state continuous-time Markov chain with generator G solves the balance equation πG = 0 together with a normalisation condition.",
+          "text": "The stationary distribution π of a finite continuous-time Markov chain with generator G is a row vector solving πG = 0.",
           "source_id": "00000000-0000-0000-0000-0000000000b1",
           "locator": "p.3, Ex 3.8",
           "required": true
@@ -188,34 +188,26 @@
         {
           "id": "00000000-0000-0000-0000-000000020502",
           "concept_id": "00000000-0000-0000-0000-000000000105",
-          "text": "For the generator with rows (-3, 1, 1, 1), (0, -3, 2, 1), (1, 2, -4, 1), (0, 0, 1, -1), the stationary distribution is π = (3, 7, 9, 19)/38.",
-          "source_id": "00000000-0000-0000-0000-0000000000b1",
-          "locator": "p.3, Ex 3.8",
-          "required": true
-        },
-        {
-          "id": "00000000-0000-0000-0000-000000020503",
-          "concept_id": "00000000-0000-0000-0000-000000000105",
-          "text": "For the generator with rows (-2, 1, 1, 0), (0, -1, 1, 0), (1, 1, -3, 1), (0, 0, 1, -1), the stationary distribution is π = (1, 3, 2, 2)/8.",
+          "text": "πG = 0 only fixes π up to scale; π must also be normalised so its entries sum to 1.",
           "source_id": "00000000-0000-0000-0000-0000000000b1",
           "locator": "p.8, Q4",
           "required": true
         },
         {
-          "id": "00000000-0000-0000-0000-000000020504",
+          "id": "00000000-0000-0000-0000-000000020503",
           "concept_id": "00000000-0000-0000-0000-000000000105",
-          "text": "In the taxi chain (state 0 waiting at location 1, state 1 waiting at location 2, state 2 driving from 1 to 2, state 3 driving from 2 to 1), the chain is irreducible with a finite state space, so the stationary distribution exists and is unique, and lim_{t->inf} p_{i0}(t) = π0 = 1/6.2 = 0.16129.",
+          "text": "The long-run proportion of time the chain spends in state i is π_i.",
           "source_id": "00000000-0000-0000-0000-0000000000b1",
-          "locator": "p.9, Q5",
-          "required": false
+          "locator": "p.11, Q7",
+          "required": true
         },
         {
-          "id": "00000000-0000-0000-0000-000000020505",
+          "id": "00000000-0000-0000-0000-000000020504",
           "concept_id": "00000000-0000-0000-0000-000000000105",
-          "text": "In the taxi chain, a mean waiting time of 5 minutes gives rate 0.2, a mean drive of 10 minutes from location 1 to 2 gives rate 0.1, and a mean drive of 11 minutes from location 2 to 1 gives rate 1/11.",
+          "text": "The sojourn time in state i is exponential with rate -g_ii (minus the diagonal entry of G), so its mean is 1/(-g_ii).",
           "source_id": "00000000-0000-0000-0000-0000000000b1",
-          "locator": "p.9, Q5",
-          "required": false
+          "locator": "p.3, Ex 3.8",
+          "required": true
         }
       ]
     },
@@ -266,23 +258,23 @@
         {
           "id": "00000000-0000-0000-0000-000000020701",
           "concept_id": "00000000-0000-0000-0000-000000000107",
-          "text": "A birth-death process with birth rates λ_n (n = 0, 1, 2, ...) and death rates β_n (n = 1, 2, 3, ...) is transient if and only if the sum over n >= 1 of β_n···β_2β_1 / (λ_n···λ_2λ_1) is finite.",
-          "source_id": "00000000-0000-0000-0000-0000000000b1",
-          "locator": "p.1, Ex 3.11",
-          "required": true
-        },
-        {
-          "id": "00000000-0000-0000-0000-000000020702",
-          "concept_id": "00000000-0000-0000-0000-000000000107",
-          "text": "A birth-death process has a stationary distribution, equivalently is positive recurrent, if and only if the sum over n >= 1 of λ_{n-1}···λ_1λ_0 / (β_n···β_2β_1) is finite (Example 2.4 in lecture note 3).",
+          "text": "A birth-death process is positive recurrent, equivalently has a stationary distribution, if and only if the sum over n >= 1 of (λ_{n-1}···λ_0)/(β_n···β_1) is finite.",
           "source_id": "00000000-0000-0000-0000-0000000000b1",
           "locator": "p.3, Ex 3.11",
           "required": true
         },
         {
+          "id": "00000000-0000-0000-0000-000000020702",
+          "concept_id": "00000000-0000-0000-0000-000000000107",
+          "text": "When that sum S is finite, π0 = 1/(1+S) and π_n = π0 (λ_{n-1}···λ_0)/(β_n···β_1) for n >= 1.",
+          "source_id": "00000000-0000-0000-0000-0000000000b1",
+          "locator": "p.4, Ex 3.14",
+          "required": true
+        },
+        {
           "id": "00000000-0000-0000-0000-000000020703",
           "concept_id": "00000000-0000-0000-0000-000000000107",
-          "text": "For λ_n = 1 + 1/(n+1) = (n+2)/(n+1) and β_n = 1, both sums diverge (each equals ∞), so the process is null recurrent.",
+          "text": "If that sum and the sum over n >= 1 of (β_n···β_1)/(λ_n···λ_1) both diverge, the process is null recurrent.",
           "source_id": "00000000-0000-0000-0000-0000000000b1",
           "locator": "p.4, Ex 3.11 (cont.)",
           "required": true
@@ -290,17 +282,9 @@
         {
           "id": "00000000-0000-0000-0000-000000020704",
           "concept_id": "00000000-0000-0000-0000-000000000107",
-          "text": "For λ_n = 1 - 1/(n+2) = (n+1)/(n+2) and β_n = 1, both sums diverge (each equals ∞), so the process is null recurrent.",
+          "text": "To classify a given birth-death process, simplify the rate products (they often telescope) and test the resulting series for convergence.",
           "source_id": "00000000-0000-0000-0000-0000000000b1",
           "locator": "p.4, Ex 3.11 (cont.)",
-          "required": true
-        },
-        {
-          "id": "00000000-0000-0000-0000-000000020705",
-          "concept_id": "00000000-0000-0000-0000-000000000107",
-          "text": "In Ex 3.14 the sum of λ_{n-1}···λ_0 / (β_n···β_1) equals the sum of 1/n!, which is e - 1 < ∞, so the process is positive recurrent with π0 = 1/e and π_n = (1/n!)(1/e) for n = 1, 2, 3, ...",
-          "source_id": "00000000-0000-0000-0000-0000000000b1",
-          "locator": "p.4, Ex 3.14",
           "required": true
         }
       ]
