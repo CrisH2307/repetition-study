@@ -176,3 +176,11 @@ func TestReviewedAllowlistIsApproved(t *testing.T) {
 		t.Fatalf("%v", m)
 	}
 }
+
+// F8: an exact but tiny quote proves nothing, so it cannot back a correction.
+func TestOneWordQuoteRejected(t *testing.T) {
+	o, _, _ := run(t, fixture(), false, wrong("derivative", "s1"))
+	if r := o.Results[0]; r.Label != domain.LabelPartial || r.Correction != nil || r.Citation != nil {
+		t.Fatalf("one-word quote must not verify, got %+v", r)
+	}
+}

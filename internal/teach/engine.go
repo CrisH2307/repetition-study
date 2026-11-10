@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/CrisH2307/repetition-study/internal/cite"
 	"github.com/CrisH2307/repetition-study/internal/domain"
 )
 
@@ -279,8 +280,9 @@ func (e *Engine) Finish(ctx context.Context, sessionID string) (domain.Report, e
 }
 
 // finalize applies the rules code owns to the checker's output: drop unknown
-// labels, drop any correction without a verified citation, and mark required
-// claims the human never mentioned as absent.
+// labels, drop any correction without a verified citation (downgrading
+// contradicted to partial), and mark required claims the human never
+// mentioned as absent.
 func finalize(c domain.Concept, sources []domain.Source, in []domain.ClaimResult) []domain.ClaimResult {
 	text := map[string]string{}
 	for _, s := range sources {
@@ -296,12 +298,16 @@ func finalize(c domain.Concept, sources []domain.Source, in []domain.ClaimResult
 		}
 		if r.Citation != nil {
 			src, ok := text[r.Citation.SourceID]
-			if !ok || r.Citation.Quote == "" || !strings.Contains(src, r.Citation.Quote) {
+			if !ok || !cite.Verify(src, r.Citation.Quote) {
 				r.Citation = nil
 			}
 		}
 		if r.Citation == nil {
+			// Same rule as the checker: no proof, no correction, no contradiction.
 			r.Correction = nil
+			if r.Label == domain.LabelContradicted {
+				r.Label = domain.LabelPartial
+			}
 		}
 		if r.ClaimID != nil {
 			seen[*r.ClaimID] = true
