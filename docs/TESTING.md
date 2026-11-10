@@ -4,7 +4,7 @@ Hi Dino. This page tells you exactly what to do to test our project. You do not 
 
 **The golden rule:** if anything does not look like the "What you should see" line, do not try to fix it. Copy everything on your screen, send it to Cris, and stop.
 
-**What we are testing:** a student explains a topic out loud, a small AI "student" asks questions, a checker finds what the student got wrong, and a wrong answer makes the review date come sooner and changes next week's plan. We can show that this loop works. We cannot say that students learn more. Never say that.
+**What we are testing:** a student types an explanation of a topic, a small AI "student" asks questions, a checker finds what the student got wrong and shows the exact quote from the course notes, and a wrong answer makes the review date come sooner. We can show that this loop works. We cannot say that students learn more. Never say that.
 
 These steps are for a Mac. If you use Windows, tell Cris before you start.
 
@@ -105,7 +105,7 @@ What you should see: an error message that contains the words `review_events is 
 **B4. No secret keys saved in the project history**
 
 ```bash
-git grep -n -e AIza -e sk-ant -e sk-or $(git rev-list --all)
+git grep -n -E "AIza[0-9A-Za-z_-]{30,}|sk-ant-[A-Za-z0-9_-]{20,}|sk-or-[A-Za-z0-9_-]{20,}" $(git rev-list --all) -- . ":!docs"
 ```
 
 What you should see: nothing at all. If lines appear, tell Cris right away and do not share them.
@@ -128,59 +128,64 @@ go test ./internal/teach/...
 
 What you should see: a line that starts with `ok`.
 
-## Part C. The Hour 3 gate (the most important test)
+## Part C. The checker gate (the most important test)
 
 This test decides whether the checker is good enough to change the review dates. If it fails, the checker's findings are shown only as suggestions.
 
-**The 20 explanations.** We prepare 20 short student explanations: about 10 correct, 5 partly correct, 5 wrong. You and Cris each give every one a label, working alone:
+**The 20 explanations.** We prepare 20 short student explanations: about 10 correct, 5 partly correct, 5 wrong, each split into small statements. You and one classmate (not Cris, because you know this subject) each give every statement a label, working alone. Cris builds the tools and does not label:
 - `supported`: the explanation is correct
 - `partial`: partly correct
 - `contradicted`: it says something that is wrong
 - `absent`: it leaves out something important
 
 Steps:
-1. Label your sheet by yourself. Do not look at Cris's labels.
-2. Then you and Cris sit together and agree on every difference. The agreed list is saved as `labels_final.csv`.
-3. After that file is saved, nobody changes it, even if a result looks bad.
+1. Label your sheet by yourself. Do not look at your classmate's labels. The guide is `eval/data/LABELLING.md`.
+2. Cris runs a tool that measures how often you two agree. It must be at least 0.6 (a score from 0 to 1). If it is lower, you two talk about the differences and label again.
+3. You and your classmate agree on every remaining difference. The agreed list is saved as `labels_final.csv`.
+4. After that file is saved, nobody changes it, even if a result looks bad.
 
-**What counts as a pass.** Cris runs the checker. You read the report at `eval/results/gate.md`.
+**What counts as a pass.** Cris runs the checker. You read the report at `eval/results/gate.md`. It starts with a plain summary for you.
 
 | Question | Pass |
 | --- | --- |
-| Of the 5 wrong explanations, how many did the checker catch? | At least 4 |
-| Of the 10 correct explanations, how many did the checker wrongly call wrong? | At most 1 |
-| Every correction shows a quote from the course PDF | All of them |
-| Does the AI student ever say something it was never told? (10 trial questions) | Never |
+| Of the statements that really are right, how many did the checker wrongly call wrong? | At most 3 in 100 |
+| Of the statements that really are wrong, how many did the checker catch? | At least 80 in 100 |
+| Of the statements that were left out, how many did the checker notice? | At least 85 in 100 |
+| We change 100 statements on purpose (drop a condition, flip a sign). How many did the checker catch? | At least 85 in 100 |
+| Does every correction show an exact quote that really is in the course notes? | All of them |
+| Is the quote one a person agrees supports the correction? | At least 9 in 10 |
+| Same input three times: does the checker give the same answer? | At least 95 times in 100 |
+| An explanation that tries to trick the checker (10 tries): does it change a label? | Never |
+| The AI student: does it ever say something it was never told? (30 tries) | Never |
+| Cost of one session | At most 8 US cents |
 
-Also read every failed example in full, not just the count. If any line fails, stop and decide with Cris. The plan is to use fewer topics and try a different checker model once. If it still fails, we show findings as suggestions only, and we say so in the demo.
+Also read every failed example in full, not just the count. If any line fails, stop and decide with Cris. The plan is to use fewer topics and try a different checker model once. If it still fails, we show findings as suggestions only, and we say so.
 
-## Part D. The full demo run (later, when the screens are ready)
+## Part D. Using the page yourself (when Cris says the page is ready)
 
-Cris will tell you when the screens are ready. Use Chrome. Take a screenshot at every step.
-
-Start from a clean copy of the data. Cris will give you the exact command.
+Use Chrome. Take a screenshot at every step. Start from a clean copy of the data. Cris will give you the exact command. You do three real sessions on the practice-set topics and write down what felt wrong.
 
 | Step | What you do | What you should see |
 | --- | --- | --- |
-| D1 | Add two school subjects with weekly hours, level and exam date | A weekly study plan appears |
-| D2 | Look at the plan | Each study block shows a "teach it" session coming up |
-| D3 | Pick the topic Cris names, explain it out loud, and say one wrong thing on purpose | The AI student asks one question at a time and never corrects you |
-| D4 | Finish the session | A report that shows the mistake, with a quote from the course PDF |
-| D5 | Look at that topic's next review date | The date moved sooner, and you can see the change |
-| D6 | Open the study cards | The mistake created at least one card, and you can edit it |
-| D7 | Open "Further Planning" | Remembering and explaining are shown as two separate scores, and next week's hours changed |
-| D8 | Open the daily summary | One line per subject with how many reviews are due and how many minutes |
+| D1 | Pick the topic Cris names | The topic opens, and no course notes are visible |
+| D2 | Type your explanation. Put in one wrong thing on purpose | Your formulas show properly as you type |
+| D3 | Send your explanation | The AI student asks one question at a time and never tells you the answer |
+| D4 | Finish the session and tick which statements you think you covered | A report appears |
+| D5 | Read the report | The wrong thing is marked, with an exact quote from the course notes and its page |
+| D6 | Look at that topic's next review date | The date moved sooner, and you can see before and after |
+| D7 | Open the study cards | The mistake made at least one card, and you can edit it |
+| D8 | Explain the same topic again with no mistakes | No false mistake appears, and the date does not move sooner |
 | D9 | Change a review date by hand | It saves, and the change shows in the history |
-| D10 | Explain the same topic again with no mistakes | No false mistake appears, and the date does not move sooner |
+| D10 | Cris turns the checker off. Finish a session | The report says "not checked", and no date changes |
 
-D3, D4 and D5 are the heart of the project. If they fail, nothing else matters.
+D3, D5 and D6 are the heart of the project. If they fail, nothing else matters. Not tested yet because they are not built: accounts, uploading your own notes, the daily summary.
 
 ## Part E. Things that can go wrong on stage
 
 | Problem | What to test |
 | --- | --- |
-| Spoken math comes out garbled | Say a formula out loud and read what the screen wrote. Practice using the edit box and the formula box. On stage, explain the idea in words. |
-| Microphone | Use Chrome only. Allow the microphone on the demo laptop and test it. Chrome sends the voice to Google to turn it into text, so say that out loud in the demo. |
+| Formulas look wrong | Type a formula and check the preview matches what you meant |
+| Voice (only if it is added later) | We type first. If voice is added, spoken math comes out garbled, so check it. Chrome sends voice to Google, so say that out loud |
 | Bad internet | Turn Wi-Fi off and see what the screen does. Keep a screen recording of D1 to D9 as a backup. |
 | Missing or wrong key | Start with a wrong key and check that you see a clear message, not a blank screen. |
 | Slow answers | Count the seconds until the first word and until the report, for 10 turns. These numbers include the AI company's own delay. Do not compare them with tests that used a pretend AI. |
@@ -197,7 +202,7 @@ Send Cris one message per problem, with these four lines:
 
 1. Part A now.
 2. Part B now. B6 waits until Cris says the teaching part is in `qa`.
-3. Label your sheet for Part C as soon as the explanations are ready. This takes the longest, so start early.
+3. Find one classmate who knows this course to label with you. Label your sheet for Part C as soon as the explanations are ready. This takes the longest, so start early.
 4. Part C gate run, then stop and decide with Cris.
-5. Parts D and E when the screens are ready. The full run must pass on `qa` before anything goes to the final version.
+5. Parts D and E when the page is ready. The full run must pass on `qa` before anything goes to the final version.
 6. You tell Cris pass or fail. Cris decides what goes to the final version.
