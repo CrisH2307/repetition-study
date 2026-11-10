@@ -1,0 +1,8 @@
+.env
+.env.local
+content/private/
+.venv/
+node_modules/
+dist/
+.claude/settings.local.json
+.claude/worktrees/

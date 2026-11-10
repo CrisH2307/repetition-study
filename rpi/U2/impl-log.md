@@ -1,0 +1,3 @@
+- llm: retry helper, Gemini stream, Anthropic JSON built; tests pass against httptest stubs (real API unverified)
+- teach: StudentContext, probe order, 2-sentence cap, Engine Start/Turn/Finish, MemStore; go test -race ./internal/teach passes (fakes)
+- leak suite: 10 probes with fakes (leak_test.go) and realllm-tagged real test (compiled only, unverified); all tests pass

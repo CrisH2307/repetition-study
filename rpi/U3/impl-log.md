@@ -1,0 +1,3 @@
+- checker: verify.go + checker.go + tests; go test ./internal/checker/... ok (correct quote, paraphrase, unapproved, injection, hint, absent)
+- evalcheck: loaders, gemini/claude/fake adapters, meter, report writer + tests; go test ./internal/checker/... ./cmd/evalcheck/... ok; smoke run with --model fake on temp data ok; gemini without key errors cleanly.
+- Not run: real Gemini and Claude tiers (no keys in .env, labels_final.csv not merged). Real SDK calls unverified.

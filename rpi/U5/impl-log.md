@@ -1,0 +1,5 @@
+- allocate.go + tests: 8 pass
+- allocate.go + tests: 8 pass
+- allocate.go + allocate_test.go: 8 unit tests pass (determinism, hours ceiling, locked kept, worse retention raises hours, teach before review and 24h lead, no-concept subject, 30% new, level fade).
+- store.go: Generate replaces unlocked future blocks in one tx; keeps locked and past blocks. Progress and FurtherPlanning in progress.go.
+- store_test.go: 2 DB tests in a rolled-back tx, pass against local Postgres (run make up migrate first). Demo loop: wrong teach-back raises next week's hours for that subject only.
