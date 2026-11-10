@@ -1,0 +1,5 @@
+- domain: ReportStatus, BlockKind, SourceBlock, Pack, new ReviewEvent/DueItem/Report fields; ReportReader, TeachStore, SessionScheduler, PackLoader. go build ./... green.
+- migrations/0003 + TestTeachBackIsUniquePerSession, append-only test also updates a v2 column. Clean DB: migrate + tests pass. Index dropped: uniqueness test fails. Upgrade DB with data: row counts and review_events hash identical before/after.
+- fakes: TeachEngine.GetReport, Scheduler.ApplyTeachBackSession (idempotent), TeachStore, PackLoader, DueItem.Reason. go test -race ./internal/fakes ok.
+- api: spec 0.2.0 with ReportStatus, Report.status, DueItem.reason, ReviewEvent v2 fields; quoted 5 broken descriptions; api/openapi_test.go (kin-openapi v0.152.0) validates doc and domain JSON. Removing DueItem.reason from the spec fails the test.
+- Full run on fresh DB p0contract_clean: go build ./..., go vet ./..., make migrate (0001-0003 applied), make test, go test -race ./... all green (12 packages ok). `make up` could not bind :5432 from this worktree because the shared dev container already holds it; tests ran against that server instead. Scratch DBs dropped.

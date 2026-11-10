@@ -91,6 +91,12 @@ func TestOtherFakesRun(t *testing.T) {
 	if _, err := te.Turn(ctx, "nope", "", ""); err == nil {
 		t.Fatal("unknown session must error")
 	}
+	if r, err := te.GetReport(ctx, sess.ID); err != nil || r.Status != domain.ReportChecked {
+		t.Fatalf("get report: %+v %v", r, err)
+	}
+	if _, err := te.GetReport(ctx, "nope"); err == nil {
+		t.Fatal("unknown report must error")
+	}
 
 	res, _ := (&Checker{}).Check(ctx, domain.CheckInput{Concept: domain.Concept{Claims: []domain.Claim{
 		{ID: "a", Required: true}, {ID: "b"},
@@ -102,5 +108,48 @@ func TestOtherFakesRun(t *testing.T) {
 	d, _ := Digester{}.Today(ctx, Epoch)
 	if len(p.Blocks) != 1 || len(d.Items) != 1 {
 		t.Fatalf("planner/digester: %+v %+v", p, d)
+	}
+}
+
+func TestSchedulerTeachBackSessionIsIdempotent(t *testing.T) {
+	ctx := context.Background()
+	s := &Scheduler{Clock: NewClock()}
+	wrong := []domain.ClaimResult{{Label: domain.LabelContradicted}}
+	first, _ := s.ApplyTeachBackSession(ctx, "sess-1", "c1", wrong)
+	retry, _ := s.ApplyTeachBackSession(ctx, "sess-1", "c1", nil)
+	other, _ := s.ApplyTeachBackSession(ctx, "sess-2", "c1", nil)
+	if first.ID != retry.ID || len(s.Events) != 2 || other.ID == first.ID {
+		t.Fatalf("retry must not append: %+v", s.Events)
+	}
+	if *first.SessionID != "sess-1" || *s.Events[0].SessionID != "sess-1" || *first.Grade != domain.GradeAgain {
+		t.Fatalf("event: %+v", first)
+	}
+}
+
+func TestTeachStoreAndPackLoader(t *testing.T) {
+	ctx := context.Background()
+	m := &TeachStore{Concepts: map[string]domain.Concept{"c1": {ID: "c1"}}}
+	if _, _, err := m.LoadConcept(ctx, "nope"); err == nil {
+		t.Fatal("unknown concept must error")
+	}
+	sess, _ := m.StartSession(ctx, "c1")
+	tc, err := m.SaveTurn(ctx, domain.TaughtClaim{SessionID: sess.ID, StudentText: "x"}, "x", "")
+	if err != nil || tc.ID == "" {
+		t.Fatalf("save turn: %+v %v", tc, err)
+	}
+	if _, err := m.SaveTurn(ctx, domain.TaughtClaim{SessionID: "nope"}, "", ""); err == nil {
+		t.Fatal("unknown session must error")
+	}
+	_ = m.SetAssistantText(ctx, sess.ID, 1, "why?")
+	_ = m.SaveResults(ctx, sess.ID, []domain.ClaimResult{{Label: domain.LabelAbsent}})
+	_ = m.FinishSession(ctx, sess.ID)
+	if m.Assistant[sess.ID][1] != "why?" || len(m.Results[sess.ID]) != 1 || !m.Finished[sess.ID] {
+		t.Fatalf("store state: %+v", m)
+	}
+
+	p := &PackLoader{}
+	_ = p.LoadPack(ctx, domain.Pack{Subject: domain.Subject{ID: "s1"}})
+	if len(p.Packs) != 1 || p.Packs[0].Subject.ID != "s1" {
+		t.Fatalf("packs: %+v", p.Packs)
 	}
 }
