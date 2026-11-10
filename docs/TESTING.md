@@ -116,11 +116,9 @@ What you should see: nothing at all. If lines appear, tell Cris right away and d
 make migrate
 ```
 
-What you should see: nothing printed at all (the first time ever it prints two "applied" lines, which is also fine). It must not show an error.
+What you should see: nothing printed at all (the first time ever it prints three "applied" lines, which is also fine). It must not show an error.
 
 **B6. The AI student never sees the course text**
-
-This one only works after Cris says the teaching part is added to `qa`.
 
 ```bash
 go test ./internal/teach/...
@@ -201,7 +199,7 @@ Open a new issue on GitHub (the Issues tab, then "New issue", then "Problem foun
 ## Order of work
 
 1. Part A now.
-2. Part B now. B6 waits until Cris says the teaching part is in `qa`.
+2. Part B now.
 3. Find one classmate who knows this course to label with you. Label your sheet for Part C as soon as the explanations are ready. This takes the longest, so start early.
 4. Part C gate run, then stop and decide with Cris.
 5. Parts D and E when the page is ready. The full run must pass on `qa` before anything goes to the final version.
