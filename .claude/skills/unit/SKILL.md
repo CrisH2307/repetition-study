@@ -17,7 +17,7 @@ Work in this order:
 1. Research: verify versions, library APIs and anything the prompt leaves open. Keep rpi/$0/research.md under 30 lines.
 2. Plan: write steps, files, tests and risks in rpi/$0/plan.md. Continue without asking unless the prompt says to wait for Cris, or the work conflicts with CLAUDE.md or the contract.
 3. Implement in small commits, with tests alongside the code. After each step, add one line to rpi/$0/impl-log.md: what changed and the test result.
-4. Push the branch and open small PRs with `gh pr create --base qa`, one concern each. Never merge. Cris merges.
+4. Push the branch. Do not open a PR and do not merge. Cris merges into qa and main himself.
 5. Finish with the report CLAUDE.md asks for.
 
 Stop and ask Cris if a test keeps failing after two different fixes, or if you need a file outside this unit's boundary.

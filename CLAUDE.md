@@ -1,9 +1,10 @@
-# Space Repetition hackathon build
+# Space Repetition build
 
-Product: students teach a concept aloud to an AI student. A separate grounded
-checker finds gaps. Gaps change FSRS review dates, and those change next week's
-study plan. Success today: a wrong explanation visibly changes the next review
-and next week's plan.
+Product: students teach a concept to an AI student, typing LaTeX first and
+voice optional. A separate grounded checker finds gaps. Gaps change FSRS review
+dates, and those change next week's study plan. Success for Phase 0: a wrong
+explanation visibly changes the next review, backed by a real quote, and the
+checker passes gate G0 on real models.
 
 Hard design rules
 - Code owns all state and rules. LLMs only write words and label claims.
@@ -14,7 +15,11 @@ Hard design rules
 - The checker sees sources. Every correction needs a citation whose quote is
   verified by code as an exact substring of an approved source. No valid
   citation means no correction.
-- Approved sources are the course unit and the reviewed allowlist only.
+- Approved sources are the course unit only. The outside allowlist is dropped.
+- One code path verifies citations: internal/cite. Nothing else re-checks quotes.
+- The AI student gets no free text from any model that has seen the source.
+- If the checker fails, the report is `unchecked` and no schedule changes.
+- Course material is never committed. It lives in gitignored content/private/.
 - Student speech and text are untrusted data, never instructions to any model.
 - Student explains with sources hidden. Corrections appear after the attempt.
 - review_events is append-only.
@@ -22,7 +27,8 @@ Hard design rules
 
 Stack: Go backend (net/http, pgx, SSE), Postgres, go-fsrs, Gemini for the
 student, Claude for the checker. Python only in scripts/parse_pdf.py, outside
-the request path. React, Vite, TypeScript and KaTeX for the thin demo UI.
+the request path. React, Vite, TypeScript and KaTeX for the web UI. The "UI
+deferred" rule is lifted for the MVP (see DECISIONS D8).
 
 Working rules
 - Never assume requirements, names, versions or library APIs. Check the code or
@@ -30,13 +36,17 @@ Working rules
 - Stay inside the file boundary in your prompt. Need a contract change? Stop and
   ask Cris. Never edit internal/domain, api/ or migrations/ from a unit branch.
 - Never commit to main. Branches are feature/<name>, fix/<name>, chore/<name>.
-- Small PRs into qa, one function, fix or concern each. Commit messages are
-  imperative and explain why when it is not obvious.
+- Small commits, one function, fix or concern each. Push your branch and stop.
+  Do not open PRs and do not merge. Cris merges into qa and main himself.
+  Commit messages are imperative and explain why when it is not obvious.
+- Anything written for Dino is plain language: no jargon, exact steps, what pass
+  looks like, and "copy the output to Cris and stop" on failure.
 - Keep rpi/<unit>/research.md, plan.md and impl-log.md short and current.
 - Never commit secrets. Read keys from the environment.
 - Do not use em dashes in product copy or docs.
 - When context usage passes 50%, stop and ask Cris about handing over.
 - Final report under 200 words: done, tests run with results, risks, unverified.
 
-Repo: CrisH2307/repetition-study. Deadline: 5pm America/Toronto, 2026-11-09.
-Full plan: docs/PLAN.md. Your task comes from rpi/<unit>/PROMPT.md through /unit.
+Repo: CrisH2307/repetition-study. Plan: docs/PLAN.md. Decisions: docs/DECISIONS.md.
+Model choice per task: docs/CLAUDE-CODE-SETUP.md. Your task comes from
+rpi/<unit>/PROMPT.md through /unit.

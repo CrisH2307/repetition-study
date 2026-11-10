@@ -1,14 +1,174 @@
 {
-  "U0": {"branch": "feature/setup", "allow": ["*"]},
-  "U1": {"branch": "feature/content-pack", "allow": ["content/", "scripts/parse_pdf.py", "scripts/check_labels.py", "eval/data/", "rpi/U1/"]},
-  "U2": {"branch": "feature/teach-engine", "allow": ["internal/teach/", "internal/llm/", "rpi/U2/"]},
-  "U3": {"branch": "feature/checker", "allow": ["internal/checker/", "eval/", "cmd/evalcheck/", "rpi/U3/"], "deny": ["eval/data/"]},
-  "U4": {"branch": "feature/scheduler", "allow": ["internal/srs/", "rpi/U4/"]},
-  "U5": {"branch": "feature/planner", "allow": ["internal/planner/", "rpi/U5/"]},
-  "U6": {"branch": "feature/digest", "allow": ["internal/digest/", "rpi/U6/"]},
-  "U7": {"branch": "feature/demo-ui", "allow": ["web/", "rpi/U7/"]},
-  "GATE": {"branch": "feature/gate-results", "allow": ["eval/results/", "rpi/GATE/"]},
-  "INT": {"branch": "feature/integration", "allow": ["cmd/", "internal/app/", "Makefile", "rpi/INT/"]},
-  "QA": {"branch": "chore/qa-run", "allow": ["qa/", "rpi/QA/"]},
-  "RELEASE": {"branch": "chore/release", "allow": ["demo/", "rpi/RELEASE/"]}
+  "U0": {
+    "branch": "feature/setup",
+    "allow": [
+      "*"
+    ]
+  },
+  "U1": {
+    "branch": "feature/content-pack",
+    "allow": [
+      "content/",
+      "scripts/parse_pdf.py",
+      "scripts/check_labels.py",
+      "eval/data/",
+      "rpi/U1/"
+    ]
+  },
+  "U2": {
+    "branch": "feature/teach-engine",
+    "allow": [
+      "internal/teach/",
+      "internal/llm/",
+      "rpi/U2/"
+    ]
+  },
+  "U3": {
+    "branch": "feature/checker",
+    "allow": [
+      "internal/checker/",
+      "eval/",
+      "cmd/evalcheck/",
+      "rpi/U3/"
+    ],
+    "deny": [
+      "eval/data/"
+    ]
+  },
+  "U4": {
+    "branch": "feature/scheduler",
+    "allow": [
+      "internal/srs/",
+      "rpi/U4/"
+    ]
+  },
+  "U5": {
+    "branch": "feature/planner",
+    "allow": [
+      "internal/planner/",
+      "rpi/U5/"
+    ]
+  },
+  "U6": {
+    "branch": "feature/digest",
+    "allow": [
+      "internal/digest/",
+      "rpi/U6/"
+    ]
+  },
+  "QA": {
+    "branch": "chore/qa-run",
+    "allow": [
+      "qa/",
+      "rpi/QA/"
+    ]
+  },
+  "P0-HYG": {
+    "branch": "chore/repo-hygiene",
+    "allow": [
+      ".github/",
+      ".gitignore",
+      "CLAUDE.md",
+      "docs/",
+      ".claude/",
+      "content/",
+      "rpi/P0-HYG/"
+    ]
+  },
+  "P0-CONTRACT": {
+    "branch": "feature/contract-v2",
+    "allow": [
+      "internal/domain/",
+      "api/",
+      "migrations/",
+      "internal/fakes/",
+      "rpi/P0-CONTRACT/",
+      "go.mod",
+      "go.sum"
+    ]
+  },
+  "P0-CITE": {
+    "branch": "fix/citation-normalize",
+    "allow": [
+      "internal/cite/",
+      "internal/checker/",
+      "internal/teach/engine.go",
+      "internal/teach/engine_test.go",
+      "rpi/P0-CITE/"
+    ]
+  },
+  "P0-LLM": {
+    "branch": "feature/llm-parity",
+    "allow": [
+      "internal/llm/",
+      "cmd/evalcheck/",
+      ".env.example",
+      "rpi/P0-LLM/"
+    ]
+  },
+  "P0-EVALDATA": {
+    "branch": "feature/eval-data",
+    "allow": [
+      "eval/data/",
+      "scripts/check_labels.py",
+      "rpi/P0-EVALDATA/",
+      "content/"
+    ]
+  },
+  "P0-STORE": {
+    "branch": "feature/pg-store",
+    "allow": [
+      "internal/store/",
+      "rpi/P0-STORE/"
+    ]
+  },
+  "P0-OUTAGE": {
+    "branch": "fix/checker-outage",
+    "allow": [
+      "internal/teach/",
+      "rpi/P0-OUTAGE/"
+    ]
+  },
+  "P0-SRS": {
+    "branch": "fix/srs-idempotency",
+    "allow": [
+      "internal/srs/",
+      "cmd/migrate/",
+      "rpi/P0-SRS/"
+    ]
+  },
+  "P0-TZ": {
+    "branch": "fix/planner-timezone",
+    "allow": [
+      "internal/planner/",
+      "rpi/P0-TZ/"
+    ]
+  },
+  "P0-INT": {
+    "branch": "feature/integration",
+    "allow": [
+      "cmd/api/",
+      "cmd/seed/",
+      "internal/app/",
+      "Makefile",
+      "compose.yaml",
+      "go.mod",
+      "go.sum",
+      "rpi/P0-INT/"
+    ]
+  },
+  "P0-GATE": {
+    "branch": "feature/gate-results",
+    "allow": [
+      "eval/results/",
+      "rpi/P0-GATE/"
+    ]
+  },
+  "P0-SLICE": {
+    "branch": "feature/dogfood-page",
+    "allow": [
+      "web/",
+      "rpi/P0-SLICE/"
+    ]
+  }
 }
