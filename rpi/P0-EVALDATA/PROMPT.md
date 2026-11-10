@@ -2,6 +2,8 @@ Unit P0-EVALDATA, wave 1, after P0-HYG is on integration/p0. Branch `feature/eva
 Files: `eval/data/`, `content/`, `scripts/check_labels.py`, `rpi/P0-EVALDATA/`.
 Read first: `docs/improved/strategy-review-fable.md` sections 1.4 items 6 to 8, 4.6 and D10, D20; `docs/PLAN.md` gate table; `content/unit.json`. The real PDF is in gitignored `content/private/`.
 
+Already on qa from U1: `eval/data/explanations.jsonl` (20 explanations, no claim-level split), `labels_cris.csv`, `labels_dino.csv` (empty, explanation level) and `scripts/check_labels.py`. D10 says Cris does not label, and labels are per claim, so replace `labels_cris.csv` with `labels_classmate.csv` and extend the script. Reuse the explanations only if they still fit the rewritten claims.
+
 Rules: never commit text copied from the PDF. Student-style explanations are written in your own words. Labels are claim level: for each explanation, each required claim gets `supported`, `partial`, `contradicted` or `absent`. Dino and one classmate label independently. Cris does not label. Dino is not technical: anything for him is plain language with exact steps.
 
 Steps
