@@ -2,7 +2,9 @@
 package content
 
 import (
+	"bufio"
 	"bytes"
+	"encoding/csv"
 	"encoding/json"
 	"os"
 	"regexp"
@@ -138,6 +140,72 @@ func TestUnit(t *testing.T) {
 		}
 		if required < 3 || required > 5 {
 			t.Errorf("concept %q: want 3 to 5 required claims, got %d", c.Name, required)
+		}
+	}
+}
+
+// TestSeedAndEval checks the generated SQL is current and the eval files line up with the unit.
+func TestSeedAndEval(t *testing.T) {
+	var u unit
+	strict(t, "unit.json", &u)
+	pack, err := os.ReadFile("seed_pack.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(pack), u.Sources[0].Text) {
+		t.Error("seed_pack.sql is stale: run python3 scripts/parse_pdf.py --sql content/unit.json content/seed_pack.sql")
+	}
+	concepts := map[string]bool{}
+	for _, c := range u.Concepts {
+		concepts[c.ID] = true
+		for _, cl := range c.Claims {
+			if !strings.Contains(string(pack), cl.ID) {
+				t.Errorf("seed_pack.sql lacks claim %s: regenerate it", cl.ID)
+			}
+		}
+	}
+
+	f, err := os.Open("../eval/data/explanations.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	ids := map[string]bool{}
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 1<<20), 1<<20)
+	for sc.Scan() {
+		var e struct {
+			ID        string `json:"id"`
+			ConceptID string `json:"concept_id"`
+			Text      string `json:"text"`
+		}
+		d := json.NewDecoder(strings.NewReader(sc.Text()))
+		d.DisallowUnknownFields() // a stray "label" key would leak the answer
+		if err := d.Decode(&e); err != nil {
+			t.Fatal(err)
+		}
+		if e.ID == "" || ids[e.ID] || !concepts[e.ConceptID] || strings.TrimSpace(e.Text) == "" {
+			t.Errorf("explanation %q: empty or duplicate id, unknown concept or empty text", e.ID)
+		}
+		ids[e.ID] = true
+	}
+	if len(ids) != 20 {
+		t.Errorf("want 20 explanations, got %d", len(ids))
+	}
+	for _, name := range []string{"labels_cris.csv", "labels_dino.csv"} {
+		b, err := os.ReadFile("../eval/data/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rows, err := csv.NewReader(bytes.NewReader(b)).ReadAll()
+		if err != nil || len(rows) != 21 || rows[0][0] != "id" || rows[0][1] != "label" {
+			t.Errorf("%s: want header id,label and 20 rows (err %v)", name, err)
+			continue
+		}
+		for _, r := range rows[1:] {
+			if !ids[r[0]] {
+				t.Errorf("%s: unknown id %q", name, r[0])
+			}
 		}
 	}
 }

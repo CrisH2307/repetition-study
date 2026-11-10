@@ -11,3 +11,6 @@
 - Source text in unit.json is source.md with spaces collapsed and blank lines dropped, so a quote is not broken by layout padding.
 - Allowlist is `[]`. Fields per entry (url, publisher, license, reviewed_by, reviewed_at) are enforced by the test.
 - Unverified: whether Docling gives better math than pdftotext on this file.
+- Eval meaning (from cmd/evalcheck): one label per explanation = worst result over the concept's required claims. So a "correct" explanation covers every required claim of its concept.
+- Seed history uses go-fsrs v4.0.0 default weights, short-term off (same as internal/srs). Gaps 1, 3 and 8 days. The sheet "Study - F26" tab MATH 6602 shows Cris's rhythm 1, 2, 3, 4, 5, 7, 15, 30, 45 days. The sheet also has a continuous-time Markov chain column.
+- Loading: `make seed` only loads scripts/seed.sql. content/seed_pack.sql then content/seed.sql must be loaded by INT (not in U1's boundary).
