@@ -15,20 +15,34 @@ import (
 
 // Config holds every tunable constant. All values are proposals, not measured.
 type Config struct {
-	Target         float64       // retention target R*, 0.90
-	NewShare       float64       // share of all blocks reserved for new material, 0.30
-	UrgencyCap     float64       // urgency = min(UrgencyCap, 1 + UrgencyDays/days_to_exam)
-	UrgencyDays    float64       // 14
-	LevelBeginner  float64       // 1.3
-	LevelInter     float64       // 1.0
-	LevelAdvanced  float64       // 0.8
-	EvidenceEvents float64       // level fades out after this many review events, 20
-	FullGap        float64       // a retention gap this big asks for the full weekly_hours, 0.5
-	BlockMinutes   int           // 30
-	DayStartHour   int           // first slot of each day, UTC hour, 9
-	SlotsPerDay    int           // 8
-	TeachLead      time.Duration // a teach block starts at least this long after generation, 24h
-	MaxBlocks      int           // optional cap on blocks across all subjects, 0 = none
+	Target         float64        // retention target R*, 0.90
+	NewShare       float64        // share of all blocks reserved for new material, 0.30
+	UrgencyCap     float64        // urgency = min(UrgencyCap, 1 + UrgencyDays/days_to_exam)
+	UrgencyDays    float64        // 14
+	LevelBeginner  float64        // 1.3
+	LevelInter     float64        // 1.0
+	LevelAdvanced  float64        // 0.8
+	EvidenceEvents float64        // level fades out after this many review events, 20
+	FullGap        float64        // a retention gap this big asks for the full weekly_hours, 0.5
+	BlockMinutes   int            // 30
+	DayStartHour   int            // first slot of each day, local hour in Loc, 9
+	SlotsPerDay    int            // 8
+	TeachLead      time.Duration  // a teach block starts at least this long after generation, 24h
+	MaxBlocks      int            // optional cap on blocks across all subjects, 0 = none
+	Loc            *time.Location // the user's time zone for day and week boundaries, nil = UTC
+}
+
+func (cfg Config) loc() *time.Location {
+	if cfg.Loc == nil {
+		return time.UTC
+	}
+	return cfg.Loc
+}
+
+// LocalWeekStart returns midnight of t's calendar date in the config's zone.
+// The date is read in t's own zone, so UTC midnight and local midnight both mean the same day.
+func (cfg Config) LocalWeekStart(t time.Time) time.Time {
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, cfg.loc())
 }
 
 func DefaultConfig() Config {
@@ -128,6 +142,7 @@ type want struct {
 // Allocate assigns 30 minute blocks greedily, then places them in free slots.
 // locked blocks are never moved. They count against weekly_hours and block their slots.
 func (cfg Config) Allocate(now, weekStart time.Time, in []SubjectData, locked []domain.PlanBlock) (Allocation, error) {
+	weekStart = cfg.LocalWeekStart(weekStart)
 	subs := append([]SubjectData(nil), in...)
 	sort.Slice(subs, func(i, j int) bool { return subs[i].Subject.ID < subs[j].Subject.ID })
 
@@ -277,8 +292,10 @@ func (cfg Config) place(now, weekStart time.Time, locked []domain.PlanBlock, wan
 	slot := time.Duration(cfg.BlockMinutes) * time.Minute
 	var free []time.Time
 	for d := 0; d < 7; d++ {
+		// Calendar arithmetic in the user's zone, so a 23 or 25 hour day keeps its local hours.
+		day := time.Date(weekStart.Year(), weekStart.Month(), weekStart.Day()+d, cfg.DayStartHour, 0, 0, 0, cfg.loc())
 		for j := 0; j < cfg.SlotsPerDay; j++ {
-			t := weekStart.Add(time.Duration(d)*24*time.Hour + time.Duration(cfg.DayStartHour)*time.Hour + time.Duration(j)*slot)
+			t := day.Add(time.Duration(j) * slot)
 			busy := t.Before(now)
 			for _, b := range locked {
 				if t.Before(b.StartsAt.Add(time.Duration(b.Minutes)*time.Minute)) && b.StartsAt.Before(t.Add(slot)) {

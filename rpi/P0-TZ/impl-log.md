@@ -1,0 +1,3 @@
+- Config.Loc, LocalWeekStart, local-day slots in place(): planner tests green.
+- Store.userConfig; Generate/Progress use it: green on throwaway DB (dropped).
+- Added DST test and store tz test: go test -race ./internal/planner/... ok.
