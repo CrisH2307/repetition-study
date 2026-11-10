@@ -13,12 +13,14 @@ import (
 	"github.com/CrisH2307/repetition-study/internal/domain"
 )
 
-var _ domain.TeachEngine = (*Engine)(nil)
+var (
+	_ domain.TeachEngine  = (*Engine)(nil)
+	_ domain.ReportReader = (*Engine)(nil)
+)
 
 // Options tunes timeouts. Zero values use the defaults.
 type Options struct {
-	CheckTimeout time.Duration // per async check. default 20s
-	FinishWait   time.Duration // how long Finish waits for pending checks. default 8s
+	CheckTimeout time.Duration // for the final check at Finish. default 20s
 	Log          *slog.Logger
 }
 
@@ -27,19 +29,16 @@ type Engine struct {
 	store   Store
 	student domain.LLM // streams the AI student
 	checker domain.Checker
-	sched   domain.Scheduler
+	sched   domain.SessionScheduler
 	opt     Options
 
 	mu       sync.Mutex
 	sessions map[string]*sess // ponytail: in memory, lost on restart. Persist if sessions must survive a deploy.
 }
 
-func New(store Store, student domain.LLM, checker domain.Checker, sched domain.Scheduler, opt Options) *Engine {
+func New(store Store, student domain.LLM, checker domain.Checker, sched domain.SessionScheduler, opt Options) *Engine {
 	if opt.CheckTimeout <= 0 {
-		opt.CheckTimeout = 20 * time.Second
-	}
-	if opt.FinishWait <= 0 {
-		opt.FinishWait = 8 * time.Second
+		opt.CheckTimeout = 20 * time.Second // ponytail: not measured on real models; tune after P0-GATE
 	}
 	if opt.Log == nil {
 		opt.Log = slog.Default()
@@ -52,8 +51,7 @@ type sess struct {
 	concept domain.Concept // holds source claims: never sent to the student
 	sources []domain.Source
 
-	fin sync.Mutex // serializes Finish so the scheduler runs once
-	wg  sync.WaitGroup
+	fin sync.Mutex // serializes Finish so only one final check runs at a time
 
 	mu         sync.Mutex
 	turnNo     int
@@ -61,10 +59,8 @@ type sess struct {
 	taught     []domain.TaughtClaim
 	transcript []string
 	latex      []string
-	results    []domain.ClaimResult // newest completed check
-	resultTurn int
 	used       map[string]bool
-	report     *domain.Report
+	report     *domain.Report // latest Finish result; only a checked one is final
 }
 
 func (e *Engine) Start(ctx context.Context, conceptID string) (domain.TeachSession, error) {
@@ -92,8 +88,8 @@ func (e *Engine) get(id string) (*sess, error) {
 	return s, nil
 }
 
-// Turn saves what the human said, starts the checker in the background and
-// streams the student's next question. The reply never waits for the checker.
+// Turn saves what the human said and streams the student's next question.
+// The checker does not run per turn (DECISIONS D5): it runs once at Finish.
 func (e *Engine) Turn(ctx context.Context, sessionID, transcript, latex string) (<-chan domain.Delta, error) {
 	began := time.Now()
 	s, err := e.get(sessionID)
@@ -125,21 +121,15 @@ func (e *Engine) Turn(ctx context.Context, sessionID, transcript, latex string) 
 	s.transcript = append(s.transcript, transcript)
 	s.latex = append(s.latex, latex)
 
-	in := domain.CheckInput{
-		Concept: s.concept, Sources: s.sources, Taught: append([]domain.TaughtClaim(nil), s.taught...),
-		Transcript: strings.Join(s.transcript, "\n\n"), LaTeX: strings.TrimSpace(strings.Join(s.latex, "\n")),
-	}
 	sc := StudentContext{
 		ConceptName: s.concept.Name,
-		Probe:       pickProbe(s.concept.Name, n, s.results, s.used, s.sources, s.concept.Claims),
+		// No checker output per turn: code's generic probes until the Phase 1 matcher.
+		Probe: pickProbe(s.concept.Name, n, nil, s.used, s.sources, s.concept.Claims),
 	}
 	for _, t := range s.taught {
 		sc.Taught = append(sc.Taught, t.StudentText)
 	}
-	s.wg.Add(1)
 	s.mu.Unlock()
-
-	go e.runCheck(ctx, s, n, in)
 
 	sctx, cancel := context.WithCancel(ctx)
 	up, err := e.student.Stream(sctx, domain.LLMRequest{
@@ -205,33 +195,29 @@ loop:
 	}
 }
 
-// runCheck never fails the session: errors, panics and timeouts are logged.
-func (e *Engine) runCheck(ctx context.Context, s *sess, n int, in domain.CheckInput) {
-	defer s.wg.Done()
+// check runs the final check. A panic, error or timeout becomes an error,
+// never a partial result.
+func (e *Engine) check(ctx context.Context, s *sess, in domain.CheckInput) (res []domain.ClaimResult, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			e.opt.Log.Error("checker panic", "session", s.id, "turn", n, "panic", r)
+			res, err = nil, fmt.Errorf("checker panic: %v", r)
 		}
 	}()
-	cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), e.opt.CheckTimeout)
+	cctx, cancel := context.WithTimeout(ctx, e.opt.CheckTimeout)
 	defer cancel()
 	start := time.Now()
-	res, err := e.checker.Check(cctx, in)
-	if err != nil {
-		e.opt.Log.Warn("check failed", "session", s.id, "turn", n, "err", err)
-		return
-	}
-	e.opt.Log.Info("check done", "session", s.id, "turn", n, "ms", time.Since(start).Milliseconds())
-	s.mu.Lock()
-	if n >= s.resultTurn {
-		s.results, s.resultTurn = res, n
-	}
-	s.mu.Unlock()
+	e.opt.Log.Info("final check started", "session", s.id)
+	res, err = e.checker.Check(cctx, in)
+	e.opt.Log.Info("final check done", "session", s.id, "ms", time.Since(start).Milliseconds(), "err", err)
+	return res, err
 }
 
-// Finish waits for pending checks up to FinishWait, adds absent results for
-// required claims never mentioned, verifies citations, applies the teach-back
-// to the schedule once, and returns the report.
+// Finish closes the session to new turns and runs one synchronous final
+// check. If the check fails or times out the report is unchecked: no results
+// are saved, the scheduler is not called and the session stays open in the
+// store, so calling Finish again retries. A checked report is final and later
+// calls return it unchanged. The scheduler is keyed by the session id, so
+// retries write at most one review event.
 func (e *Engine) Finish(ctx context.Context, sessionID string) (domain.Report, error) {
 	s, err := e.get(sessionID)
 	if err != nil {
@@ -240,43 +226,59 @@ func (e *Engine) Finish(ctx context.Context, sessionID string) (domain.Report, e
 	s.fin.Lock()
 	defer s.fin.Unlock()
 	s.mu.Lock()
-	if s.report != nil {
+	if s.report != nil && s.report.Status == domain.ReportChecked {
 		defer s.mu.Unlock()
 		return *s.report, nil
 	}
 	s.closed = true
-	s.mu.Unlock()
-
-	done := make(chan struct{})
-	go func() { s.wg.Wait(); close(done) }()
-	select {
-	case <-done:
-	case <-time.After(e.opt.FinishWait):
-		e.opt.Log.Warn("finish: checks still pending, using latest result", "session", s.id)
-	case <-ctx.Done():
-		return domain.Report{}, ctx.Err()
+	in := domain.CheckInput{
+		Concept: s.concept, Sources: s.sources, Taught: append([]domain.TaughtClaim(nil), s.taught...),
+		Transcript: strings.Join(s.transcript, "\n\n"), LaTeX: strings.TrimSpace(strings.Join(s.latex, "\n")),
 	}
-
-	s.mu.Lock()
-	results := append([]domain.ClaimResult(nil), s.results...)
 	s.mu.Unlock()
+
+	results, err := e.check(ctx, s, in)
+	if err != nil {
+		if ctx.Err() != nil { // the caller gave up: not a checker outage
+			return domain.Report{}, ctx.Err()
+		}
+		e.opt.Log.Warn("final check failed, report unchecked", "session", s.id, "err", err)
+		return e.setReport(s, domain.Report{SessionID: s.id, ConceptID: s.concept.ID, Status: domain.ReportUnchecked}), nil
+	}
 	final := finalize(s.concept, s.sources, results)
 
 	if err := e.store.SaveResults(ctx, s.id, final); err != nil {
 		return domain.Report{}, err
 	}
-	ev, err := e.sched.ApplyTeachBack(ctx, s.concept.ID, final)
+	ev, err := e.sched.ApplyTeachBackSession(ctx, s.id, s.concept.ID, final)
 	if err != nil {
 		return domain.Report{}, err
 	}
 	if err := e.store.FinishSession(ctx, s.id); err != nil {
 		e.opt.Log.Warn("mark session finished failed", "session", s.id, "err", err)
 	}
-	rep := domain.Report{SessionID: s.id, ConceptID: s.concept.ID, Results: final, Schedule: &ev}
+	return e.setReport(s, domain.Report{SessionID: s.id, ConceptID: s.concept.ID, Results: final, Schedule: &ev, Status: domain.ReportChecked}), nil
+}
+
+func (e *Engine) setReport(s *sess, r domain.Report) domain.Report {
 	s.mu.Lock()
-	s.report = &rep
+	s.report = &r
 	s.mu.Unlock()
-	return rep, nil
+	return r
+}
+
+// GetReport returns the latest report from Finish, checked or unchecked.
+func (e *Engine) GetReport(_ context.Context, sessionID string) (domain.Report, error) {
+	s, err := e.get(sessionID)
+	if err != nil {
+		return domain.Report{}, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.report == nil {
+		return domain.Report{}, fmt.Errorf("teach: session %q has no report yet", sessionID)
+	}
+	return *s.report, nil
 }
 
 // finalize applies the rules code owns to the checker's output: drop unknown

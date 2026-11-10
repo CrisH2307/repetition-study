@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -77,21 +78,23 @@ func TestStudentContextHasNoSourceFields(t *testing.T) {
 	}
 }
 
+// Turns never call the checker (DECISIONS D5), so no checker text, leaky or
+// not, can reach the student.
 func TestSourceTextNeverReachesStudent(t *testing.T) {
 	llm := &fakes.LLM{}
-	hintLeak := "ask why " + claim2 // quotes the source: must be skipped
+	var calls atomic.Int32
 	chk := checkFn(func(context.Context, domain.CheckInput) ([]domain.ClaimResult, error) {
-		return []domain.ClaimResult{
-			{ClaimID: ptr("k2"), Label: domain.LabelContradicted, ProbeHint: &hintLeak},
-			{ClaimID: ptr("k1"), Label: domain.LabelPartial, ProbeHint: ptr("what happens to the flux over time?")},
-		}, nil
+		calls.Add(1)
+		return []domain.ClaimResult{{ClaimID: ptr("k2"), Label: domain.LabelContradicted, ProbeHint: ptr("ask why " + claim2)}}, nil
 	})
 	e, _, _ := newEngine(t, llm, chk, Options{})
 	s, _ := e.Start(context.Background(), conceptID)
 	drain(t, must(e.Turn(context.Background(), s.ID, "zorblat is a thing about flux", "")))
-	e.sessions[s.ID].wg.Wait()
 	drain(t, must(e.Turn(context.Background(), s.ID, "it makes flux go up", "")))
 
+	if n := calls.Load(); n != 0 {
+		t.Fatalf("checker ran %d times during turns, want 0", n)
+	}
 	if len(llm.Requests) != 2 {
 		t.Fatalf("want 2 student requests, got %d", len(llm.Requests))
 	}
@@ -105,9 +108,6 @@ func TestSourceTextNeverReachesStudent(t *testing.T) {
 				t.Errorf("student request contains source text %q:\n%s", banned, all)
 			}
 		}
-	}
-	if !strings.Contains(llm.Requests[1].System, "what happens to the flux over time?") {
-		t.Errorf("second turn should use the partial hint after the leaking hint was skipped:\n%s", llm.Requests[1].System)
 	}
 }
 
@@ -166,50 +166,99 @@ func TestSentenceCapKeepsDecimalsAndSplitDeltas(t *testing.T) {
 	}
 }
 
-func TestTurnDoesNotWaitForChecker(t *testing.T) {
-	release := make(chan struct{})
-	chk := checkFn(func(ctx context.Context, _ domain.CheckInput) ([]domain.ClaimResult, error) {
-		select {
-		case <-release:
-		case <-ctx.Done():
-		}
-		return nil, errors.New("slow")
-	})
-	e, _, _ := newEngine(t, &fakes.LLM{}, chk, Options{})
-	s, _ := e.Start(context.Background(), conceptID)
-	done := make(chan string)
-	go func() { done <- drain(t, must(e.Turn(context.Background(), s.ID, "hello", ""))) }()
-	select {
-	case got := <-done:
-		if got == "" {
-			t.Fatal("empty reply")
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("reply waited for the checker")
-	}
-	close(release)
-}
-
-func TestCheckerFailureAndPanicDoNotBreakSession(t *testing.T) {
+// F6: a checker outage must not grade the learner. The report is unchecked,
+// nothing is saved and the scheduler writes no event (so no gap cards).
+func TestCheckerOutageReportsUnchecked(t *testing.T) {
 	for name, chk := range map[string]domain.Checker{
 		"error": checkFn(func(context.Context, domain.CheckInput) ([]domain.ClaimResult, error) { return nil, errors.New("boom") }),
 		"panic": checkFn(func(context.Context, domain.CheckInput) ([]domain.ClaimResult, error) { panic("boom") }),
+		"timeout": checkFn(func(ctx context.Context, _ domain.CheckInput) ([]domain.ClaimResult, error) {
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}),
 	} {
 		t.Run(name, func(t *testing.T) {
-			e, sch, _ := newEngine(t, &fakes.LLM{}, chk, Options{})
+			e, sch, st := newEngine(t, &fakes.LLM{}, chk, Options{CheckTimeout: 50 * time.Millisecond})
 			s, _ := e.Start(context.Background(), conceptID)
 			drain(t, must(e.Turn(context.Background(), s.ID, "something", "")))
 			rep, err := e.Finish(context.Background(), s.ID)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(rep.Results) != 2 || rep.Results[0].Label != domain.LabelAbsent {
-				t.Fatalf("want both required claims absent, got %+v", rep.Results)
+			if rep.Status != domain.ReportUnchecked || rep.Schedule != nil || len(rep.Results) != 0 {
+				t.Fatalf("want empty unchecked report, got %+v", rep)
 			}
-			if *sch.Events[0].Grade != domain.GradeAgain {
-				t.Fatalf("grade %v", *sch.Events[0].Grade)
+			if len(sch.Events) != 0 {
+				t.Fatalf("outage wrote %d review events", len(sch.Events))
+			}
+			if _, saved := st.Results[s.ID]; saved || st.Finished[s.ID] {
+				t.Fatal("outage must not save results or finish the session")
+			}
+			if got := must(e.GetReport(context.Background(), s.ID)); got.Status != domain.ReportUnchecked {
+				t.Fatalf("GetReport %+v", got)
 			}
 		})
+	}
+}
+
+// F7: Finish again after the checker recovers writes exactly one event.
+func TestFinishRetryAfterOutageWritesOneEvent(t *testing.T) {
+	var down atomic.Bool
+	down.Store(true)
+	ok := &fakes.Checker{Results: []domain.ClaimResult{{ClaimID: ptr("k1"), Label: domain.LabelPartial}}}
+	chk := checkFn(func(ctx context.Context, in domain.CheckInput) ([]domain.ClaimResult, error) {
+		if down.Load() {
+			return nil, errors.New("vendor outage")
+		}
+		return ok.Check(ctx, in)
+	})
+	e, sch, st := newEngine(t, &fakes.LLM{}, chk, Options{})
+	s, _ := e.Start(context.Background(), conceptID)
+	drain(t, must(e.Turn(context.Background(), s.ID, "it controls decay", "")))
+
+	if rep := must(e.Finish(context.Background(), s.ID)); rep.Status != domain.ReportUnchecked {
+		t.Fatalf("first finish %+v", rep)
+	}
+	if _, err := e.Turn(context.Background(), s.ID, "late", ""); err == nil {
+		t.Error("turn after an unchecked finish should fail")
+	}
+	down.Store(false)
+	rep := must(e.Finish(context.Background(), s.ID))
+	again := must(e.Finish(context.Background(), s.ID))
+	if rep.Status != domain.ReportChecked || rep.Schedule == nil {
+		t.Fatalf("retry %+v", rep)
+	}
+	if len(sch.Events) != 1 || again.Schedule.ID != rep.Schedule.ID {
+		t.Fatalf("want one event, got %d", len(sch.Events))
+	}
+	if sid := sch.Events[0].SessionID; sid == nil || *sid != s.ID {
+		t.Fatalf("event not keyed by session: %v", sid)
+	}
+	if len(rep.Results) != 2 || len(st.Results[s.ID]) != 2 || !st.Finished[s.ID] { // partial k1, absent k2
+		t.Fatalf("results %+v, saved %d, finished %v", rep.Results, len(st.Results[s.ID]), st.Finished[s.ID])
+	}
+	if got := must(e.GetReport(context.Background(), s.ID)); got.Status != domain.ReportChecked {
+		t.Fatalf("GetReport %+v", got)
+	}
+}
+
+// A caller that gives up is not an outage: Finish returns its error and
+// leaves no report.
+func TestFinishCallerCancelIsNotUnchecked(t *testing.T) {
+	chk := checkFn(func(ctx context.Context, _ domain.CheckInput) ([]domain.ClaimResult, error) {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	})
+	e, sch, _ := newEngine(t, &fakes.LLM{}, chk, Options{})
+	s, _ := e.Start(context.Background(), conceptID)
+	drain(t, must(e.Turn(context.Background(), s.ID, "hi", "")))
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if _, err := e.Finish(ctx, s.ID); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err %v", err)
+	}
+	if _, err := e.GetReport(context.Background(), s.ID); err == nil || len(sch.Events) != 0 {
+		t.Fatal("cancelled finish left a report or an event")
 	}
 }
 
@@ -235,7 +284,7 @@ func TestFinishFillsAbsentVerifiesCitationAndSchedulesOnce(t *testing.T) {
 	if len(sch.Events) != 1 || rep2.Schedule.ID != rep.Schedule.ID {
 		t.Fatalf("scheduler ran %d times", len(sch.Events))
 	}
-	if rep.Schedule == nil || rep.Schedule.EventType != domain.EventTeachBack {
+	if rep.Status != domain.ReportChecked || rep.Schedule == nil || rep.Schedule.EventType != domain.EventTeachBack {
 		t.Fatalf("schedule %+v", rep.Schedule)
 	}
 	if len(rep.Results) != 3 { // k1, unmatched wrong claim, absent k2. "weird" dropped.
@@ -255,22 +304,6 @@ func TestFinishFillsAbsentVerifiesCitationAndSchedulesOnce(t *testing.T) {
 	}
 	if _, err := e.Turn(context.Background(), s.ID, "late", ""); err == nil {
 		t.Error("turn after finish should fail")
-	}
-}
-
-func TestFinishStopsWaitingForSlowChecker(t *testing.T) {
-	block := make(chan struct{})
-	defer close(block)
-	chk := checkFn(func(context.Context, domain.CheckInput) ([]domain.ClaimResult, error) { <-block; return nil, nil })
-	e, _, _ := newEngine(t, &fakes.LLM{}, chk, Options{FinishWait: 50 * time.Millisecond})
-	s, _ := e.Start(context.Background(), conceptID)
-	drain(t, must(e.Turn(context.Background(), s.ID, "hi", "")))
-	start := time.Now()
-	if _, err := e.Finish(context.Background(), s.ID); err != nil {
-		t.Fatal(err)
-	}
-	if time.Since(start) > time.Second {
-		t.Fatal("finish waited too long")
 	}
 }
 
