@@ -12,4 +12,4 @@ Steps
 5. Sweep the docs for broken references (old deadlines, `rpi/U7`, `rpi/RELEASE`, `rpi/INT`, `rpi/GATE` paths, the old gate file name) and fix them. Do not rewrite `docs/PLAN.md`, `DECISIONS.md` or `TESTING.md`; list anything wrong in them in your report instead.
 
 Done when: `go test ./...` passes with no private files present; `git grep -n "Practice Problem Set\|local board game store" -- . ":!docs/improved"` prints nothing; CI file is valid YAML.
-Do not open a PR. Push the branch and stop. Report under 200 words.
+Push the branch, then open a PR into qa with `gh pr create --base qa` (body: "Closes #<issue>", tests run, what is unverified). Never merge. Stop. Report under 200 words.

@@ -11,7 +11,7 @@ One log. Newest change at the top of each row. On 2026-11-09 Cris and Dino appro
 | D5 | Checker: one final check at Finish, plus a cheap per-turn matcher that never sees source prose. | Approved |
 | D6 | Probes: code-owned question types plus human-approved cue labels. No free-text hints from any model that saw the source. | Approved |
 | D7 | Course material: purge from the repo and its history, keep in gitignored `content/private/`, ask the instructor for written permission. Cris runs the history purge by hand. | Approved |
-| D8 | Regulations: "UI deferred" is lifted for the MVP. Jev is optional, log a manual split when not run. One regulations file. PRs are replaced by: agents push branches, Cris merges into `qa` and `main`. | Approved |
+| D8 | Regulations: "UI deferred" is lifted for the MVP. Jev is optional, log a manual split when not run. One regulations file. Flow: issue, branch from `qa`, agent opens a PR into `qa`, Cris merges, Dino tests on `qa`, Cris merges `qa` into `main`. Agents never merge. | Approved |
 | D9 | Gate bars: adopt the table in PLAN.md. The old four bars stay as a smoke check. | Approved |
 | D10 | Eval labels: Dino plus one classmate, not Cris. Cris builds tooling. | Approved |
 | D11 | Models: a bake-off decides student, matcher and checker across both vendors, cap US$50. No role is fixed in advance. | Approved |

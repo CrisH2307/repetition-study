@@ -13,4 +13,4 @@ Add, as additive changes only (nothing existing breaks):
 
 Not in this unit: claim-level scheduling state (`claim_states`), accounts, jobs table. Those are Phase 1.
 Done when: `go build ./...`, `go vet ./...`, `make up migrate test` are green on a clean database; migration applies on top of the existing schema with no data loss; the append-only test still passes.
-Do not open a PR. Push the branch and stop. Report under 200 words with every new name added.
+Push the branch, then open a PR into qa with `gh pr create --base qa` (body: "Closes #<issue>", tests run, what is unverified). Never merge. Stop. Report under 200 words with every new name added.

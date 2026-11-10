@@ -1,4 +1,4 @@
-Unit P0-LLM, wave 1. Branch `feature/llm-parity` from integration/p0 (or qa). Model: Sonnet 5.5, effort medium.
+Unit P0-LLM, wave 1. Branch `feature/llm-parity` from qa. Model: Sonnet 5.5, effort medium.
 Files: `internal/llm/`, `cmd/evalcheck/`, `.env.example`, `rpi/P0-LLM/`.
 Read first: `docs/improved/strategy-review-fable.md` section 4.2 (F9, F10, F14), 4.5 and 4.6, `internal/llm/`, `cmd/evalcheck/llm.go`.
 
@@ -13,4 +13,4 @@ Steps
 6. Real-model tests sit behind the build tag `realllm` so CI never spends money. Hard cap: stop a run at US$5 for this unit.
 
 Done when: `evalcheck --model fake` runs through `internal/llm`; if keys exist, one real model per vendor runs and the cost per session prints; `go test ./internal/llm/... ./cmd/evalcheck/...` is green.
-Do not open a PR. Push the branch and stop. Report under 200 words, listing what is unverified for lack of keys.
+Push the branch, then open a PR into qa with `gh pr create --base qa` (body: "Closes #<issue>", tests run, what is unverified). Never merge. Stop. Report under 200 words, listing what is unverified for lack of keys.

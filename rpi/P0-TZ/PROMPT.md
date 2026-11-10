@@ -1,4 +1,4 @@
-Unit P0-TZ, wave 1, after P0-CONTRACT is on integration/p0. Branch `fix/planner-timezone`. Model: Sonnet 5.5, effort medium.
+Unit P0-TZ, wave 1, after P0-CONTRACT is merged into qa. Branch `fix/planner-timezone`. Model: Sonnet 5.5, effort medium.
 Files: `internal/planner/`, `rpi/P0-TZ/`.
 Read first: `docs/improved/strategy-review-fable.md` section 4.2 (F5), `internal/planner/allocate.go` near lines 28, 154, 281, `rpi/U5/research.md`.
 
@@ -10,4 +10,4 @@ Steps
 3. Timed blocks stay in the library but are not the product surface (D13). Do not build the Today queue: that is Phase 1.
 
 Done when: a test with a Toronto user shows all blocks between the configured local hours across a DST change; `go test -race ./internal/planner/...` is green.
-Do not open a PR. Push the branch and stop. Report under 200 words.
+Push the branch, then open a PR into qa with `gh pr create --base qa` (body: "Closes #<issue>", tests run, what is unverified). Never merge. Stop. Report under 200 words.

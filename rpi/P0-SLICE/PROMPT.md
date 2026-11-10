@@ -14,4 +14,4 @@ Steps
 
 Rules: formulas always rendered, labels in words and colour, no streaks or lives, accessible contrast. Dino is not technical, so every message in the UI is plain language.
 Done when: `npm run build` and any component tests pass, and Dino can complete a session against the mock. Real use against the server waits for P0-INT.
-Do not open a PR. Push the branch and stop. Report under 200 words.
+Push the branch, then open a PR into qa with `gh pr create --base qa` (body: "Closes #<issue>", tests run, what is unverified). Never merge. Stop. Report under 200 words.
