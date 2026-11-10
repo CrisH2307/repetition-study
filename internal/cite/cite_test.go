@@ -36,3 +36,16 @@ func TestNormalize(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+// Delimiters that do not stand alone are not display formulas, so prose
+// between them cannot dodge the length floor.
+func TestFalseDisplayDelimiters(t *testing.T) {
+	for _, tc := range []struct{ src, quote string }{
+		{"so $x$$y$ not and $z$$w$.", "y$ not and $z"},
+		{`a \\[2pt] no \] end`, "2pt] no"},
+	} {
+		if Verify(tc.src, tc.quote) {
+			t.Errorf("Verify(%q, %q) = true, want false", tc.src, tc.quote)
+		}
+	}
+}

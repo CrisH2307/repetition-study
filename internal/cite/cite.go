@@ -3,17 +3,14 @@
 package cite
 
 import (
-	"regexp"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
 // MinQuote is the shortest quote, in characters after Normalize, that can back
 // a correction. A shorter quote passes only if it is a whole display formula.
 const MinQuote = 20
-
-// displayMath matches $$...$$ and \[...\] blocks.
-var displayMath = regexp.MustCompile(`(?s)\$\$(.+?)\$\$|\\\[(.+?)\\\]`)
 
 // Normalize collapses every whitespace run to one space and trims the ends.
 // No case folding and no quote-mark mapping: everything else must match exactly.
@@ -32,11 +29,54 @@ func Verify(sourceText, quote string) bool {
 // wholeFormula reports whether q, normalized, is one entire display formula
 // block of src, with or without its delimiters.
 func wholeFormula(src, q string) bool {
-	for _, m := range displayMath.FindAllStringSubmatch(src, -1) {
-		inner := Normalize(m[1] + m[2])
-		if inner != "" && (q == inner || q == Normalize(m[0])) {
-			return true
+	for _, d := range [][2]string{{"$$", "$$"}, {`\[`, `\]`}} {
+		for _, b := range displayBlocks(src, d[0], d[1]) {
+			inner := Normalize(b[len(d[0]) : len(b)-len(d[1])])
+			if inner != "" && (q == inner || q == Normalize(b)) {
+				return true
+			}
 		}
 	}
 	return false
+}
+
+// displayBlocks returns each open...close span whose opener has whitespace or
+// the start of text before it and whose closer has whitespace or the end of
+// text after it. So $x$$y$ and \\[2pt] never open a block.
+func displayBlocks(src, open, close string) []string {
+	var out []string
+	for i := 0; ; {
+		k := strings.Index(src[i:], open)
+		if k < 0 {
+			return out
+		}
+		start := i + k
+		i = start + len(open)
+		if !edgeBefore(src, start) {
+			continue
+		}
+		for j := i; ; {
+			m := strings.Index(src[j:], close)
+			if m < 0 {
+				return out
+			}
+			end := j + m + len(close)
+			if edgeAfter(src, end) {
+				out = append(out, src[start:end])
+				i = end
+				break
+			}
+			j = end
+		}
+	}
+}
+
+func edgeBefore(s string, i int) bool {
+	r, _ := utf8.DecodeLastRuneInString(s[:i])
+	return i == 0 || unicode.IsSpace(r)
+}
+
+func edgeAfter(s string, i int) bool {
+	r, _ := utf8.DecodeRuneInString(s[i:])
+	return i == len(s) || unicode.IsSpace(r)
 }
