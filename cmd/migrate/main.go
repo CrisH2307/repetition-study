@@ -25,6 +25,12 @@ func main() {
 	}
 	defer conn.Close(ctx)
 
+	// One migrator at a time. The lock is per connection and is released when
+	// the connection closes, so a crashed run cannot leave it held.
+	if _, err := conn.Exec(ctx, `SELECT pg_advisory_lock(hashtextextended('repetition-study/migrate', 0))`); err != nil {
+		log.Fatal(err)
+	}
+
 	if _, err := conn.Exec(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
 		name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())`); err != nil {
 		log.Fatal(err)
@@ -41,7 +47,6 @@ func main() {
 	}
 	sort.Strings(names)
 
-	// ponytail: no lock, so two concurrent runs can race. Fine for one dev machine.
 	for _, name := range names {
 		var done bool
 		if err := conn.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE name = $1)`, name).Scan(&done); err != nil {

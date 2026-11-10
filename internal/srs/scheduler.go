@@ -13,7 +13,10 @@ import (
 	"github.com/CrisH2307/repetition-study/internal/domain"
 )
 
-var _ domain.Scheduler = (*Scheduler)(nil)
+var (
+	_ domain.Scheduler        = (*Scheduler)(nil)
+	_ domain.SessionScheduler = (*Scheduler)(nil)
+)
 
 // DB is satisfied by *pgxpool.Pool and *pgx.Conn. It is an interface only so this
 // package does not import pgxpool, whose dependency is not in go.mod.
@@ -33,7 +36,10 @@ func New(db DB, clock domain.Clock) *Scheduler {
 	return &Scheduler{db: db, clock: clock, fsrs: newFSRS()}
 }
 
-type eventIDKey struct{}
+type (
+	eventIDKey   struct{}
+	sessionIDKey struct{}
+)
 
 // WithEventID attaches a client-supplied event id (a uuid). The domain
 // interface has no id parameter, so it rides on the context. A retry with the
@@ -66,6 +72,18 @@ func (s *Scheduler) run(ctx context.Context, conceptID string, fn func(tx pgx.Tx
 			return domain.ReviewEvent{}, err
 		}
 	}
+	if sid, _ := ctx.Value(sessionIDKey{}).(string); sid != "" {
+		ev, err := scanEvent(tx.QueryRow(ctx, eventSelect+` WHERE session_id = $1 AND event_type = 'teach_back'`, sid))
+		if err == nil {
+			if ev.ConceptID != conceptID {
+				return domain.ReviewEvent{}, fmt.Errorf("srs: session %s belongs to another concept", sid)
+			}
+			return ev, nil
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return domain.ReviewEvent{}, err
+		}
+	}
 	ev, err := fn(tx)
 	if err != nil {
 		return domain.ReviewEvent{}, err
@@ -74,7 +92,7 @@ func (s *Scheduler) run(ctx context.Context, conceptID string, fn func(tx pgx.Tx
 }
 
 const eventSelect = `SELECT id, event_type, concept_id, card_id, grade, due_before, due_after,
-	stability_before, stability_after, payload, created_at FROM review_events`
+	stability_before, stability_after, payload, created_at, session_id FROM review_events`
 
 func scanEvent(row pgx.Row) (domain.ReviewEvent, error) {
 	var ev domain.ReviewEvent
@@ -82,7 +100,7 @@ func scanEvent(row pgx.Row) (domain.ReviewEvent, error) {
 	var g *string
 	var payload []byte
 	err := row.Scan(&ev.ID, &et, &ev.ConceptID, &ev.CardID, &g, &ev.DueBefore, &ev.DueAfter,
-		&ev.StabilityBefore, &ev.StabilityAfter, &payload, &ev.CreatedAt)
+		&ev.StabilityBefore, &ev.StabilityAfter, &payload, &ev.CreatedAt, &ev.SessionID)
 	ev.EventType = domain.EventType(et)
 	if g != nil {
 		gg := domain.Grade(*g)
@@ -136,16 +154,17 @@ func (s *Scheduler) record(ctx context.Context, tx pgx.Tx, et domain.EventType, 
 		return domain.ReviewEvent{}, err
 	}
 	id, _ := ctx.Value(eventIDKey{}).(string)
+	sid, _ := ctx.Value(sessionIDKey{}).(string)
 	var gs *string
 	if g != nil {
 		v := string(*g)
 		gs = &v
 	}
 	return scanEvent(tx.QueryRow(ctx, `INSERT INTO review_events
-		(id, event_type, concept_id, card_id, grade, due_before, due_after, stability_before, stability_after, payload, created_at)
-		VALUES (COALESCE(NULLIF($1,'')::uuid, gen_random_uuid()), $2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-		RETURNING id, event_type, concept_id, card_id, grade, due_before, due_after, stability_before, stability_after, payload, created_at`,
-		id, string(et), conceptID, cardID, gs, before.Due, after.Due, before.Stability, after.Stability, pj, s.clock.Now().UTC()))
+		(id, event_type, concept_id, card_id, grade, due_before, due_after, stability_before, stability_after, payload, created_at, session_id)
+		VALUES (COALESCE(NULLIF($1,'')::uuid, gen_random_uuid()), $2,$3,$4,$5,$6,$7,$8,$9,$10,$11, NULLIF($12,'')::uuid)
+		RETURNING id, event_type, concept_id, card_id, grade, due_before, due_after, stability_before, stability_after, payload, created_at, session_id`,
+		id, string(et), conceptID, cardID, gs, before.Due, after.Due, before.Stability, after.Stability, pj, s.clock.Now().UTC(), sid))
 }
 
 // review grades the concept, saves its schedule and appends the event.
@@ -200,6 +219,22 @@ func (s *Scheduler) Override(ctx context.Context, conceptID string, dueAt time.T
 // ApplyTeachBack grades the worst required claim, moves the schedule and makes
 // one gap card per contradicted, partial or absent result.
 func (s *Scheduler) ApplyTeachBack(ctx context.Context, conceptID string, results []domain.ClaimResult) (domain.ReviewEvent, error) {
+	return s.applyTeachBack(ctx, conceptID, results)
+}
+
+// ApplyTeachBackSession is ApplyTeachBack keyed by session id. A second call for
+// the same session returns the first event and changes nothing. The per-concept
+// lock serialises concurrent retries; the unique index
+// review_events_teach_back_session_uniq is the backstop.
+func (s *Scheduler) ApplyTeachBackSession(ctx context.Context, sessionID, conceptID string, results []domain.ClaimResult) (domain.ReviewEvent, error) {
+	if sessionID == "" {
+		return domain.ReviewEvent{}, errors.New("srs: teach-back needs a session id")
+	}
+	ctx = context.WithValue(ctx, sessionIDKey{}, sessionID)
+	return s.applyTeachBack(ctx, conceptID, results)
+}
+
+func (s *Scheduler) applyTeachBack(ctx context.Context, conceptID string, results []domain.ClaimResult) (domain.ReviewEvent, error) {
 	return s.run(ctx, conceptID, func(tx pgx.Tx) (domain.ReviewEvent, error) {
 		claims, err := loadClaims(ctx, tx, conceptID)
 		if err != nil {
