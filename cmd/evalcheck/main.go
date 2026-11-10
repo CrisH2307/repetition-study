@@ -13,6 +13,7 @@ import (
 
 	"github.com/CrisH2307/repetition-study/internal/checker"
 	"github.com/CrisH2307/repetition-study/internal/domain"
+	"github.com/CrisH2307/repetition-study/internal/llm"
 )
 
 func main() {
@@ -24,18 +25,21 @@ func main() {
 
 func run() error {
 	model := flag.String("model", "", "model name: gemini-*, claude-* or fake (required)")
-	unitPath := flag.String("unit", "content/unit.json", "course unit with sources and concepts")
+	unitPath := flag.String("unit", "", "course unit with sources and concepts (default content/private/unit.json)")
 	expPath := flag.String("explanations", "eval/data/explanations.jsonl", "explanations")
 	lblPath := flag.String("labels", "eval/data/labels_final.csv", "final human labels")
 	outDir := flag.String("out", "eval/results", "results directory")
-	pin := flag.Float64("price-in", 0, "USD per million input tokens (optional, enables cost)")
-	pout := flag.Float64("price-out", 0, "USD per million output tokens (optional, enables cost)")
+	maxCost := flag.Float64("max-cost", 5, "stop the run when metered cost reaches this many USD (0 = no cap)")
 	flag.Parse()
 	if *model == "" {
 		return fmt.Errorf("--model is required")
 	}
 
-	u, err := loadUnit(*unitPath)
+	up, err := resolveUnit(*unitPath)
+	if err != nil {
+		return err
+	}
+	u, err := loadUnit(up)
 	if err != nil {
 		return err
 	}
@@ -61,14 +65,15 @@ func run() error {
 	}
 
 	ctx := context.Background()
-	p, err := newProvider(ctx, *model)
+	// Same constructor the server uses, so a pass here certifies the shipped path.
+	meter := &llm.Meter{Cap: *maxCost}
+	l, err := llm.New(ctx, *model, meter)
 	if err != nil {
 		return err
 	}
-	m := &meter{p: p}
 	// Each explanation is a finished session, so absent is allowed.
-	ck := &checker.Checker{LLM: m, Model: *model, AllowAbsent: true}
-	st := stats{Model: *model, PriceIn: *pin, PriceOut: *pout}
+	ck := &checker.Checker{LLM: l, Model: *model, AllowAbsent: true}
+	st := stats{Model: *model}
 	for _, e := range exps {
 		o, err := ck.CheckDetailed(ctx, domain.CheckInput{Concept: concepts[e.ConceptID], Sources: u.Sources, Transcript: e.Text})
 		if err != nil {
@@ -78,7 +83,8 @@ func run() error {
 		st.Valid += o.Valid
 		st.Rows = append(st.Rows, row{e.ID, e.ConceptID, labels[e.ID], worst(o.Results)})
 	}
-	st.Calls = m.calls
+	st.Calls = meter.Calls()
+	st.Models = meter.Models
 
 	if err := os.MkdirAll(*outDir, 0o755); err != nil {
 		return err
@@ -89,5 +95,19 @@ func run() error {
 		return err
 	}
 	fmt.Println("wrote", path)
+	fmt.Println("cost per session:", meter.Summary())
 	return nil
+}
+
+// resolveUnit picks the real unit from gitignored content/private/ unless
+// --unit is given. content/unit.json has no source text, so it is not a default.
+func resolveUnit(flagPath string) (string, error) {
+	if flagPath != "" {
+		return flagPath, nil
+	}
+	const def = "content/private/unit.json"
+	if _, err := os.Stat(def); err != nil {
+		return "", fmt.Errorf("%s not found: the real course unit is never committed. See content/README.md, or pass --unit content/fixture/unit.json to try the fixture", def)
+	}
+	return def, nil
 }

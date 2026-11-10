@@ -10,6 +10,7 @@ import (
 
 	"github.com/CrisH2307/repetition-study/internal/checker"
 	"github.com/CrisH2307/repetition-study/internal/domain"
+	"github.com/CrisH2307/repetition-study/internal/llm"
 )
 
 func TestWorst(t *testing.T) {
@@ -36,9 +37,11 @@ func TestWorst(t *testing.T) {
 }
 
 func TestReport(t *testing.T) {
-	s := stats{Model: "m", Proposed: 4, Valid: 3, PriceIn: 1, PriceOut: 2, Calls: []callStat{
-		{time.Second, usage{1000, 500}}, {3 * time.Second, usage{3000, 500}},
-	}}
+	ms, _ := llm.LoadModels([]byte(`{"models":{"m":{"vendor":"gemini","in_per_mtok":1,"out_per_mtok":2}}}`))
+	meter := &llm.Meter{Models: ms}
+	meter.Record(llm.Call{Model: "m", In: 1000, Out: 500, Latency: time.Second})
+	meter.Record(llm.Call{Model: "m", In: 3000, Out: 500, Latency: 3 * time.Second})
+	s := stats{Model: "m", Proposed: 4, Valid: 3, Models: ms, Calls: meter.Calls()}
 	add := func(g, p domain.ClaimLabel, n int) {
 		for i := 0; i < n; i++ {
 			s.Rows = append(s.Rows, row{"x", "c", g, p})
@@ -84,38 +87,42 @@ func TestLoadLabelsRejectsIncomplete(t *testing.T) {
 	}
 }
 
-func TestDecodeFenced(t *testing.T) {
-	var out struct{ A int }
-	if err := decode("```json\n{\"A\": 2}\n```", &out); err != nil || out.A != 2 {
-		t.Fatalf("%v %v", out, err)
-	}
-	if decode("no json", &out) == nil {
-		t.Fatal("want error")
+func TestLoadLabelsRaggedRow(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "r.csv")
+	os.WriteFile(p, []byte("note,id,label\nx,e1\n"), 0o644)
+	if _, err := loadLabels(p); err == nil {
+		t.Fatal("short row must error, not panic")
 	}
 }
 
-type cannedProvider struct{ reply string }
-
-func (c cannedProvider) json(_ context.Context, _ domain.LLMRequest, out any) (usage, error) {
-	return usage{10, 5}, decode(c.reply, out)
+func TestResolveUnit(t *testing.T) {
+	t.Chdir(t.TempDir())
+	if _, err := resolveUnit(""); err == nil || !strings.Contains(err.Error(), "content/README.md") {
+		t.Fatalf("want pointer to content/README.md, got %v", err)
+	}
+	os.MkdirAll("content/private", 0o755)
+	os.WriteFile("content/private/unit.json", []byte("{}"), 0o644)
+	if p, err := resolveUnit(""); err != nil || p != "content/private/unit.json" {
+		t.Fatalf("%q %v", p, err)
+	}
+	if p, _ := resolveUnit("x.json"); p != "x.json" {
+		t.Fatal("flag must win")
+	}
 }
 
-// The meter records one call per explanation and the checker feeds the stats.
-func TestMeterAndCheckerWiring(t *testing.T) {
-	m := &meter{p: cannedProvider{`{"results":[{"claim_id":"k1","student_text":"s","label":"contradicted","correction":"c","citation":{"source_id":"s1","quote":"not in source","locator":""}}]}`}}
-	ck := &checker.Checker{LLM: m, AllowAbsent: true}
-	o, err := ck.CheckDetailed(context.Background(), domain.CheckInput{
-		Concept: domain.Concept{ID: "c", Claims: []domain.Claim{{ID: "k1", Required: true}, {ID: "k2", Required: true}}},
-		Sources: []domain.Source{{ID: "s1", Kind: domain.SourceCourse, Text: "real text"}},
-	})
+// The checker runs through llm.New("fake"): same constructor as the server.
+func TestRunFakeThroughInternalLLM(t *testing.T) {
+	meter := &llm.Meter{}
+	l, err := llm.New(context.Background(), "fake", meter)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(m.calls) != 1 || m.calls[0].Usage.In != 10 {
-		t.Fatalf("calls %+v", m.calls)
-	}
-	// Bad quote: contradicted falls to partial, k2 is filled as absent.
-	if worst(o.Results) != domain.LabelAbsent || o.Proposed != 1 || o.Valid != 0 {
-		t.Fatalf("%+v", o)
+	ck := &checker.Checker{LLM: l, AllowAbsent: true}
+	o, err := ck.CheckDetailed(context.Background(), domain.CheckInput{
+		Concept: domain.Concept{ID: "c", Claims: []domain.Claim{{ID: "k1", Required: true}}},
+		Sources: []domain.Source{{ID: "s1", Kind: domain.SourceCourse, Text: "real text"}},
+	})
+	if err != nil || len(meter.Calls()) != 1 || worst(o.Results) != domain.LabelAbsent {
+		t.Fatalf("err=%v calls=%v o=%+v", err, meter.Calls(), o)
 	}
 }
