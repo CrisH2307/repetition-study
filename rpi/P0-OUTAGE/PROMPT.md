@@ -12,3 +12,5 @@ Steps
 
 Done when: a test with a failing checker returns `unchecked` and `review_events` gains no row; a retry after the checker recovers writes one event and gap cards; `go test -race ./internal/teach/...` is green.
 Push the branch, then open a PR into qa with `gh pr create --base qa` (body: "Closes #<issue>", tests run, what is unverified). Never merge. Stop. Report under 200 words.
+
+Contract note (from the P0-CONTRACT report, PR #28): `Report.Status` (`ReportChecked`, `ReportUnchecked`) and the `ReportReader.GetReport` interface exist in `internal/domain`, but `Finish` currently returns an empty status. Set the status here, implement `ReportReader` in `internal/teach`, and call `SessionScheduler.ApplyTeachBackSession` with the session id so a retry writes one event.

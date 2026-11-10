@@ -13,3 +13,5 @@ Steps
 
 Done when: `make up migrate seed test` is green on a clean database; the loop test passes; with the checker failing, the report is `unchecked` and no event is written.
 Push the branch, then open a PR into qa with `gh pr create --base qa` (body: "Closes #<issue>", tests run, what is unverified). Never merge. Stop. Report under 200 words, listing every deviation from the contract.
+
+Contract note (from the P0-CONTRACT report, PR #28): use `domain.PackLoader` for `cmd/seed`, `ReportReader.GetReport` for the report endpoint, and `SessionScheduler.ApplyTeachBackSession` for Finish. These are separate interfaces, not new methods on `TeachEngine` and `Scheduler`.
