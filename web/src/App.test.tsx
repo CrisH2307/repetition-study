@@ -27,6 +27,7 @@ test('unchecked report says nothing changed', async () => {
   await u.click(screen.getByText('Send'))
   await screen.findByText('Why?')
   await u.click(screen.getByText(/I am done/))
+  await u.click(await screen.findByLabelText(/I think this was right: hello/))
   await u.click(await screen.findByText('Show my results'))
   expect((await screen.findByRole('status')).textContent).toMatch(/Nothing changed/)
 })

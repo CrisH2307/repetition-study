@@ -115,8 +115,10 @@ function Grade({ id, points, onDone }: { id: string; name: string; points: strin
       <ul className="plain">
         {points.map((p, i) => (
           <li key={i} className="card">
-            <label><input type="checkbox" checked={on[i]} onChange={() => setOn(on.map((v, j) => (j === i ? !v : v)))} /> I think this was right</label>
-            <div><Math text={p} /></div>
+            <label>
+              <input type="checkbox" checked={on[i]} onChange={() => setOn(on.map((v, j) => (j === i ? !v : v)))} /> I think this was right:{' '}
+              <Math text={p} />
+            </label>
           </li>
         ))}
       </ul>
