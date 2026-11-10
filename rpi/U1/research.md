@@ -1,6 +1,6 @@
 # U1 research
 
-- Input: `A3 MATH4430_6602.pdf`, 13 pages, TeX (pdfTeX 1.40.25), MATH 4430/6602 Practice Problem Set 3 with worked solutions. Copied to content/private/ (gitignored).
+- Input: `A3 MATH4430_6602.pdf`, 13 pages, TeX (pdfTeX 1.40.25), the course practice set 3 with worked solutions. Copied to content/private/ (gitignored).
 - Mismatch with docs/PLAN.md: this is NOT Chapter 2 discrete-time Markov chains. It is Lawler ch. 3 (Ex 3.2, 3.3, 3.5, 3.8, 3.11, 3.14) plus extra Q1 to Q8 on Poisson processes, exponential races, CTMC generators, balance equations and birth-death processes. Concepts come from this PDF only. Cris to confirm.
 - Docling: PyPI 2.149.0, license MIT (METADATA says `License-Expression: MIT`). Not installed. It depends on torch and model downloads, so heavy for a one-off. Its API (`DocumentConverter().convert(path).document`, `export_to_markdown`) is UNVERIFIED here: never imported or run.
 - Fallback used: `pdftotext -layout` (poppler, already installed). `scripts/parse_pdf.py` tries Docling first, falls back to pdftotext. Run once, output in content/source.md with `<!-- page N -->` markers.

@@ -56,7 +56,7 @@ func normalize(s string) string {
 
 var (
 	uuidRe    = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
-	locatorRe = regexp.MustCompile(`^p\.(\d+), (Ex 3\.\d+|Q\d)( \(cont\.\))?$`)
+	locatorRe = regexp.MustCompile(`^p\.(\d+), (Ex 3\.\d+|Q\d|Notes \d)( \(cont\.\))?$`)
 )
 
 // page returns the text of one page of the source, or false when it is missing.
@@ -69,9 +69,20 @@ func page(text string, n int) (string, bool) {
 	return body, true
 }
 
-func TestUnit(t *testing.T) {
+// TestFixture always runs: the original fixture is committed.
+func TestFixture(t *testing.T) { checkUnit(t, "fixture/unit.json", "fixture/notes.md") }
+
+// TestPrivateUnit checks the real course unit. It skips when the private copy is absent (CI).
+func TestPrivateUnit(t *testing.T) {
+	if _, err := os.Stat("private/source.md"); err != nil {
+		t.Skip("content/private/source.md not present; see content/README.md")
+	}
+	checkUnit(t, "private/unit.json", "private/source.md")
+}
+
+func checkUnit(t *testing.T, unitPath, sourcePath string) {
 	var u unit
-	strict(t, "unit.json", &u)
+	strict(t, unitPath, &u)
 	var al []allowlistEntry
 	strict(t, "allowlist.json", &al)
 	if len(al) != 0 {
@@ -82,12 +93,12 @@ func TestUnit(t *testing.T) {
 		t.Fatal("want exactly one course source")
 	}
 	src := u.Sources[0]
-	raw, err := os.ReadFile("source.md")
+	raw, err := os.ReadFile(sourcePath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if src.Text != normalize(string(raw)) {
-		t.Fatal("unit.json source text is stale: run python3 scripts/parse_pdf.py --sync content/source.md content/unit.json")
+		t.Fatal("unit.json source text is stale: run python3 scripts/parse_pdf.py --sync content/private/source.md content/private/unit.json")
 	}
 
 	if n := len(u.Concepts); n == 0 || n > 8 {
@@ -125,7 +136,7 @@ func TestUnit(t *testing.T) {
 				t.Errorf("claim %s: page %d not in source", cl.ID, n)
 				continue
 			}
-			if m[3] != "" { // continuation page: the problem heading is on an earlier page
+			if m[3] != "" || strings.HasPrefix(m[2], "Notes") { // continuation page, or fixture: no problem heading to find
 				continue
 			}
 			var re *regexp.Regexp
@@ -144,25 +155,33 @@ func TestUnit(t *testing.T) {
 	}
 }
 
-// TestSeedAndEval checks the generated SQL is current and the eval files line up with the unit.
-func TestSeedAndEval(t *testing.T) {
-	var u unit
-	strict(t, "unit.json", &u)
-	pack, err := os.ReadFile("seed_pack.sql")
+// TestSeedPack checks the generated SQL is current. It skips without the private copy.
+func TestSeedPack(t *testing.T) {
+	pack, err := os.ReadFile("private/seed_pack.sql")
 	if err != nil {
-		t.Fatal(err)
+		t.Skip("content/private/seed_pack.sql not present; see content/README.md")
 	}
+	var u unit
+	strict(t, "private/unit.json", &u)
 	if !strings.Contains(string(pack), u.Sources[0].Text) {
-		t.Error("seed_pack.sql is stale: run python3 scripts/parse_pdf.py --sql content/unit.json content/seed_pack.sql")
+		t.Error("seed_pack.sql is stale: run python3 scripts/parse_pdf.py --sql content/private/unit.json content/private/seed_pack.sql")
 	}
-	concepts := map[string]bool{}
 	for _, c := range u.Concepts {
-		concepts[c.ID] = true
 		for _, cl := range c.Claims {
 			if !strings.Contains(string(pack), cl.ID) {
 				t.Errorf("seed_pack.sql lacks claim %s: regenerate it", cl.ID)
 			}
 		}
+	}
+}
+
+// TestEval checks the eval files line up with the concepts in unit.json (no source text needed).
+func TestEval(t *testing.T) {
+	var u unit
+	strict(t, "unit.json", &u)
+	concepts := map[string]bool{}
+	for _, c := range u.Concepts {
+		concepts[c.ID] = true
 	}
 
 	f, err := os.Open("../eval/data/explanations.jsonl")

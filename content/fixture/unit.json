@@ -1,0 +1,82 @@
+{
+  "subject": {
+    "id": "00000000-0000-0000-0000-0000000000f0",
+    "name": "Fixture course",
+    "weekly_hours": 4,
+    "level": "intermediate",
+    "exam_date": "2026-12-15T00:00:00Z",
+    "weight": 1
+  },
+  "sources": [
+    {
+      "id": "00000000-0000-0000-0000-0000000000f1",
+      "kind": "course",
+      "title": "Fixture notes (original wording)",
+      "text": "<!-- page 1 -->\nNotes on exponential races\nAn exponential random variable with rate a has the density a e^(-a t) for t at least zero.\nIts tail is P(T > t) = e^(-a t), so waiting longer makes the event exponentially less likely.\nSuppose X has rate a and Y has rate b, and the two are independent.\nThen the chance that X finishes before Y is a / (a + b).\nTo see this, condition on X = t, and note that Y must then exceed t, which has probability e^(-b t).\nIntegrating a e^(-a t) times e^(-b t) over t from zero to infinity gives a / (a + b).\nThe smaller of the two times, min(X, Y), is again exponential, with rate a + b.\nThis follows because min(X, Y) > t happens exactly when both exceed t, and the tails multiply.\n<!-- page 2 -->\nNotes on superposition of Poisson processes\nA Poisson process with rate a has independent exponential gaps between arrivals, each with rate a.\nMerging two independent Poisson processes with rates a and b gives one Poisson process with rate a + b.\nEach arrival in the merged stream came from the first process with probability a / (a + b), independently of the others.\nSo if n arrivals happen in the merged stream, the number from the first process is binomial with n trials and success chance a / (a + b).\nThe count of arrivals in a window of length s is Poisson with mean (a + b) s.\nThe next arrival from either process is an exponential race, so it comes after an Exp(a + b) wait."
+    }
+  ],
+  "concepts": [
+    {
+      "id": "00000000-0000-0000-0000-00000000f001",
+      "subject_id": "00000000-0000-0000-0000-0000000000f0",
+      "name": "Exponential races",
+      "claims": [
+        {
+          "id": "00000000-0000-0000-0000-0000000f0001",
+          "concept_id": "00000000-0000-0000-0000-00000000f001",
+          "text": "If X has rate a and Y has rate b and they are independent, P(X < Y) = a/(a+b).",
+          "source_id": "00000000-0000-0000-0000-0000000000f1",
+          "locator": "p.1, Notes 1",
+          "required": true
+        },
+        {
+          "id": "00000000-0000-0000-0000-0000000f0002",
+          "concept_id": "00000000-0000-0000-0000-00000000f001",
+          "text": "The minimum of two independent exponential times is exponential with rate a+b.",
+          "source_id": "00000000-0000-0000-0000-0000000000f1",
+          "locator": "p.1, Notes 1",
+          "required": true
+        },
+        {
+          "id": "00000000-0000-0000-0000-0000000f0003",
+          "concept_id": "00000000-0000-0000-0000-00000000f001",
+          "text": "The probability a/(a+b) comes from conditioning on X = t and integrating a e^(-a t) e^(-b t).",
+          "source_id": "00000000-0000-0000-0000-0000000000f1",
+          "locator": "p.1, Notes 1",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-0000-0000-00000000f002",
+      "subject_id": "00000000-0000-0000-0000-0000000000f0",
+      "name": "Poisson superposition",
+      "claims": [
+        {
+          "id": "00000000-0000-0000-0000-0000000f0004",
+          "concept_id": "00000000-0000-0000-0000-00000000f002",
+          "text": "Merging independent Poisson processes with rates a and b gives a Poisson process with rate a+b.",
+          "source_id": "00000000-0000-0000-0000-0000000000f1",
+          "locator": "p.2, Notes 2",
+          "required": true
+        },
+        {
+          "id": "00000000-0000-0000-0000-0000000f0005",
+          "concept_id": "00000000-0000-0000-0000-00000000f002",
+          "text": "Each merged arrival comes from the first process with probability a/(a+b), independently.",
+          "source_id": "00000000-0000-0000-0000-0000000000f1",
+          "locator": "p.2, Notes 2",
+          "required": true
+        },
+        {
+          "id": "00000000-0000-0000-0000-0000000f0006",
+          "concept_id": "00000000-0000-0000-0000-00000000f002",
+          "text": "The number of arrivals in a window of length s is Poisson with mean (a+b)s.",
+          "source_id": "00000000-0000-0000-0000-0000000000f1",
+          "locator": "p.2, Notes 2",
+          "required": true
+        }
+      ]
+    }
+  ]
+}
