@@ -2,7 +2,7 @@
 name: Problem found while testing
 about: Dino or anyone, when something does not work as the test guide says
 title: "Problem: say it in a few words"
-labels: bug
+labels: Bug
 ---
 
 You do not need to know why it broke. Just answer these four things. One problem per issue.

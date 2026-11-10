@@ -2,7 +2,7 @@
 name: Unit of work
 about: One unit from the plan (for agents and Cris)
 title: "P0-XXX: short name"
-labels: phase-0
+labels: phase-0, User Story
 ---
 
 ## Why

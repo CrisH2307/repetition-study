@@ -10,7 +10,7 @@ Hard limits
 - At 50% context, stop and ask Cris about handing over. Keep every report under 200 words.
 
 Flow for every unit: issue, branch from `qa`, PR into `qa`, review, Cris merges, Dino tests on `qa`.
-Each unit has a GitHub issue labelled `phase-0` and named after the unit (for example "P0-CITE: ..."). If one is missing, create it from the unit's `rpi/<name>/PROMPT.md` (title, acceptance, "done when").
+Every issue and PR carries one type label (`Bug`, `User Story`, `Test`, `Doc`, `Issue` or `question`), plus `phase-0` and its wave label. Each unit has a GitHub issue labelled `phase-0` and named after the unit (for example "P0-CITE: ..."). If one is missing, create it from the unit's `rpi/<name>/PROMPT.md` (title, acceptance, "done when").
 
 How to start a unit
 Start each unit as its own session in its own worktree with `start_session` (fresh context, `use_worktree` true, `source_branch` `qa`). Brief: "Do unit <name>. Read `rpi/<name>/PROMPT.md` and follow `.claude/skills/unit/SKILL.md`. First run `git switch -c <branch>` from `.claude/boundaries.json`. Open a PR into qa with `Closes #<issue>`. Never merge." Pick the model and effort from the table in `docs/CLAUDE-CODE-SETUP.md`. Units in the same wave run in parallel. Units that touch the same file run in order (P0-CITE before P0-OUTAGE).

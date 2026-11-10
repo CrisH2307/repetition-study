@@ -39,7 +39,10 @@ Working rules
 - Flow: GitHub issue, then a branch from qa, then a PR into qa, then Dino tests
   on qa, then a PR from qa into main. Every unit has an issue. Small commits,
   one function, fix or concern each. Open your PR with `gh pr create --base qa`
-  (body: "Closes #<issue>", tests run, what is unverified). Never merge a PR and
+  (body: "Closes #<issue>", tests run, what is unverified).
+  Label every issue and PR with one type label: `Bug` (something broken),
+  `User Story` (new feature), `Test` (validation), `Doc`, `Issue` (other task) or
+  `question`, plus `phase-0` and its wave label. Use `gh ... --label "User Story"`. Never merge a PR and
   never push to qa or main. Cris merges. Commit messages are imperative and
   explain why when it is not obvious.
 - Anything written for Dino is plain language: no jargon, exact steps, what pass
