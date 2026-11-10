@@ -1,0 +1,3 @@
+- llm: vendor-neutral Stream/JSON, structured output, Meter, models.json, New(). `go test ./internal/llm/` ok.
+- evalcheck: private adapters deleted, runs via llm.New, labels bounds check, unit default. `go test ./cmd/evalcheck/` ok.
+- realllm tests written, vet only (-tags realllm). No real calls made.

@@ -1,5 +1,5 @@
-// Package llm holds the two real model clients behind domain.LLM.
-// Gemini streams the AI student. Anthropic returns JSON for the checker.
+// Package llm holds the real model clients behind domain.LLM. Gemini and
+// Anthropic both serve Stream and JSON, so either vendor can fill any role.
 package llm
 
 import (
@@ -9,9 +9,6 @@ import (
 	"strings"
 	"time"
 )
-
-// ErrUnsupported is returned by the method a client does not serve.
-var ErrUnsupported = errors.New("llm: method not supported by this client")
 
 // Retry tunes attempts and per-attempt time. Zero values use the defaults.
 type Retry struct {

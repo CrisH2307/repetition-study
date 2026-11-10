@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/CrisH2307/repetition-study/internal/domain"
+	"github.com/CrisH2307/repetition-study/internal/llm"
 )
 
 // Input shapes are UNVERIFIED: U1 had not merged eval/data when this was written.
@@ -83,7 +84,10 @@ func loadLabels(path string) (map[string]domain.ClaimLabel, error) {
 		return nil, fmt.Errorf("%s needs header columns id and label", path)
 	}
 	out := map[string]domain.ClaimLabel{}
-	for _, r := range rows[1:] {
+	for n, r := range rows[1:] {
+		if len(r) <= idCol || len(r) <= lblCol {
+			return nil, fmt.Errorf("%s row %d has %d columns, need id and label", path, n+2, len(r))
+		}
 		l := domain.ClaimLabel(strings.ToLower(strings.TrimSpace(r[lblCol])))
 		switch l {
 		case domain.LabelSupported, domain.LabelPartial, domain.LabelContradicted, domain.LabelAbsent:
@@ -118,16 +122,11 @@ type stats struct {
 	Model           string
 	Rows            []row
 	Proposed, Valid int
-	Calls           []callStat
-	// USD per million tokens. Zero means unknown, so cost is not reported.
-	PriceIn, PriceOut float64
+	Calls           []llm.Call
+	Models          llm.Models // prices come from internal/llm/models.json
 }
 
 var labelOrder = []domain.ClaimLabel{domain.LabelSupported, domain.LabelPartial, domain.LabelContradicted, domain.LabelAbsent}
-
-func (s stats) cost(c callStat) float64 {
-	return (float64(c.Usage.In)*s.PriceIn + float64(c.Usage.Out)*s.PriceOut) / 1e6
-}
 
 // report renders the results file. It states numbers only and names no winner.
 func (s stats) report(now time.Time) string {
@@ -195,18 +194,18 @@ func (s stats) callTable() string {
 	for i, c := range s.Calls {
 		lat[i] = c.Latency
 		sum += c.Latency
-		in += c.Usage.In
-		out += c.Usage.Out
-		total += s.cost(c)
+		in += c.In
+		out += c.Out
+		total += c.Cost
 	}
 	sort.Slice(lat, func(i, j int) bool { return lat[i] < lat[j] })
 	var b strings.Builder
 	fmt.Fprintf(&b, "- Calls: %d\n- Latency: mean %s, median %s, max %s\n", n, (sum / time.Duration(n)).Round(time.Millisecond), lat[n/2].Round(time.Millisecond), lat[n-1].Round(time.Millisecond))
 	fmt.Fprintf(&b, "- Tokens per call: mean %d in, %d out\n", in/int64(n), out/int64(n))
-	if s.PriceIn == 0 && s.PriceOut == 0 {
-		b.WriteString("- Cost: not computed, pass --price-in and --price-out (USD per million tokens)\n")
+	if !s.Models.Priced(s.Model) {
+		fmt.Fprintf(&b, "- Cost: not computed, %s has no price in internal/llm/models.json\n", s.Model)
 	} else {
-		fmt.Fprintf(&b, "- Cost: $%.5f per call, $%.4f total (at $%g in and $%g out per million tokens)\n", total/float64(n), total, s.PriceIn, s.PriceOut)
+		fmt.Fprintf(&b, "- Cost: $%.5f per call, $%.4f total (prices from models.json)\n", total/float64(n), total)
 	}
 	return b.String()
 }

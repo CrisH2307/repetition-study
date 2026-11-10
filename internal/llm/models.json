@@ -1,0 +1,7 @@
+{
+  "note": "Prices are USD per million tokens. Only entries with a source are priced; an unlisted model costs 0 and is reported as unpriced. Verify against the vendor pricing page before trusting any cost figure.",
+  "models": {
+    "claude-sonnet-5-5": {"vendor": "anthropic", "in_per_mtok": 2, "out_per_mtok": 10, "source": "docs/improved/strategy-review-fable.md section 4.5, from Anthropic pricing page, unverified by code"}
+  },
+  "gemini_default": {"thinking_budget": 0, "note": "Explicit thinking setting for Gemini models without an entry. Whether the student model accepts budget 0 is unverified."}
+}
