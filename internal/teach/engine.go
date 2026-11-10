@@ -208,7 +208,9 @@ func (e *Engine) check(ctx context.Context, s *sess, in domain.CheckInput) (res 
 	start := time.Now()
 	e.opt.Log.Info("final check started", "session", s.id)
 	res, err = e.checker.Check(cctx, in)
-	e.opt.Log.Info("final check done", "session", s.id, "ms", time.Since(start).Milliseconds(), "err", err)
+	if err == nil {
+		e.opt.Log.Info("final check done", "session", s.id, "ms", time.Since(start).Milliseconds())
+	}
 	return res, err
 }
 
@@ -243,7 +245,7 @@ func (e *Engine) Finish(ctx context.Context, sessionID string) (domain.Report, e
 			return domain.Report{}, ctx.Err()
 		}
 		e.opt.Log.Warn("final check failed, report unchecked", "session", s.id, "err", err)
-		return e.setReport(s, domain.Report{SessionID: s.id, ConceptID: s.concept.ID, Status: domain.ReportUnchecked}), nil
+		return e.setReport(s, domain.Report{SessionID: s.id, ConceptID: s.concept.ID, Results: []domain.ClaimResult{}, Status: domain.ReportUnchecked}), nil
 	}
 	final := finalize(s.concept, s.sources, results)
 

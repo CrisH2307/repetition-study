@@ -185,7 +185,7 @@ func TestCheckerOutageReportsUnchecked(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if rep.Status != domain.ReportUnchecked || rep.Schedule != nil || len(rep.Results) != 0 {
+			if rep.Status != domain.ReportUnchecked || rep.Schedule != nil || rep.Results == nil || len(rep.Results) != 0 {
 				t.Fatalf("want empty unchecked report, got %+v", rep)
 			}
 			if len(sch.Events) != 0 {
