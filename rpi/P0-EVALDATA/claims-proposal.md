@@ -1,4 +1,4 @@
-# P0-EVALDATA step 1: 4 concepts, 16 required claims (awaiting Cris)
+# P0-EVALDATA step 1: 4 concepts, 16 required claims (approved by Cris)
 
 Claims are in our own words, not copied from the PDF. Each is a definition (D),
 statement (S), condition (C) or method (M), never a worked numeric answer.

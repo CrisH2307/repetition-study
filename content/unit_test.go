@@ -176,12 +176,18 @@ func TestSeedPack(t *testing.T) {
 }
 
 // TestEval checks the eval files line up with the concepts in unit.json (no source text needed).
+// Label sheets are claim level: one row per (explanation, required claim of its concept).
 func TestEval(t *testing.T) {
 	var u unit
 	strict(t, "unit.json", &u)
-	concepts := map[string]bool{}
+	required := map[string][]string{}
 	for _, c := range u.Concepts {
-		concepts[c.ID] = true
+		required[c.ID] = nil
+		for _, cl := range c.Claims {
+			if cl.Required {
+				required[c.ID] = append(required[c.ID], cl.ID)
+			}
+		}
 	}
 
 	f, err := os.Open("../eval/data/explanations.jsonl")
@@ -189,6 +195,7 @@ func TestEval(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer f.Close()
+	var want []string // "id claim_id" in file order
 	ids := map[string]bool{}
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 1<<20), 1<<20)
@@ -203,28 +210,34 @@ func TestEval(t *testing.T) {
 		if err := d.Decode(&e); err != nil {
 			t.Fatal(err)
 		}
-		if e.ID == "" || ids[e.ID] || !concepts[e.ConceptID] || strings.TrimSpace(e.Text) == "" {
+		claims, known := required[e.ConceptID]
+		if e.ID == "" || ids[e.ID] || !known || strings.TrimSpace(e.Text) == "" {
 			t.Errorf("explanation %q: empty or duplicate id, unknown concept or empty text", e.ID)
 		}
 		ids[e.ID] = true
+		for _, cl := range claims {
+			want = append(want, e.ID+" "+cl)
+		}
 	}
 	if len(ids) != 20 {
 		t.Errorf("want 20 explanations, got %d", len(ids))
 	}
-	for _, name := range []string{"labels_cris.csv", "labels_dino.csv"} {
+	for _, name := range []string{"labels_dino.csv", "labels_classmate.csv"} {
 		b, err := os.ReadFile("../eval/data/" + name)
 		if err != nil {
 			t.Fatal(err)
 		}
 		rows, err := csv.NewReader(bytes.NewReader(b)).ReadAll()
-		if err != nil || len(rows) != 21 || rows[0][0] != "id" || rows[0][1] != "label" {
-			t.Errorf("%s: want header id,label and 20 rows (err %v)", name, err)
+		if err != nil || len(rows) == 0 || strings.Join(rows[0], ",") != "id,claim_id,explanation,claim,label,note" {
+			t.Errorf("%s: want header id,claim_id,explanation,claim,label,note (err %v)", name, err)
 			continue
 		}
+		var got []string
 		for _, r := range rows[1:] {
-			if !ids[r[0]] {
-				t.Errorf("%s: unknown id %q", name, r[0])
-			}
+			got = append(got, r[0]+" "+r[1])
+		}
+		if strings.Join(got, "\n") != strings.Join(want, "\n") {
+			t.Errorf("%s: rows do not match one row per (explanation, required claim) in explanations.jsonl order", name)
 		}
 	}
 }
