@@ -48,7 +48,11 @@ type Gap struct {
 }
 
 func (s *Store) Progress(ctx context.Context, weekStart time.Time) (Report, error) {
-	weekStart = weekStart.UTC()
+	cfg, err := s.userConfig(ctx, s.UserID)
+	if err != nil {
+		return Report{}, err
+	}
+	weekStart = cfg.LocalWeekStart(weekStart)
 	now := s.Clock.Now().UTC()
 	data, err := s.loadSubjects(ctx, s.UserID)
 	if err != nil {
@@ -72,7 +76,7 @@ func (s *Store) Progress(ctx context.Context, weekStart time.Time) (Report, erro
 		return Report{}, err
 	}
 	if len(thisBlocks) == 0 {
-		a, err := s.Cfg.Allocate(now, weekStart, data, nil)
+		a, err := cfg.Allocate(now, weekStart, data, nil)
 		if err != nil {
 			return Report{}, err
 		}
@@ -83,7 +87,7 @@ func (s *Store) Progress(ctx context.Context, weekStart time.Time) (Report, erro
 	if err != nil {
 		return Report{}, err
 	}
-	na, err := s.Cfg.Allocate(now, next, data, nextLocked)
+	na, err := cfg.Allocate(now, next, data, nextLocked)
 	if err != nil {
 		return Report{}, err
 	}
