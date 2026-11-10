@@ -302,9 +302,9 @@ func finalize(c domain.Concept, sources []domain.Source, in []domain.ClaimResult
 				r.Citation = nil
 			}
 		}
-		if r.Citation == nil {
+		if r.Citation == nil || (r.Correction != nil && strings.TrimSpace(*r.Correction) == "") {
 			// Same rule as the checker: no proof, no correction, no contradiction.
-			r.Correction = nil
+			r.Citation, r.Correction = nil, nil
 			if r.Label == domain.LabelContradicted {
 				r.Label = domain.LabelPartial
 			}
