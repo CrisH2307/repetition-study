@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/CrisH2307/repetition-study/internal/checker"
 	"github.com/CrisH2307/repetition-study/internal/domain"
 	"github.com/CrisH2307/repetition-study/internal/fakes"
 )
@@ -213,7 +214,7 @@ func TestCheckerFailureAndPanicDoNotBreakSession(t *testing.T) {
 }
 
 func TestFinishFillsAbsentVerifiesCitationAndSchedulesOnce(t *testing.T) {
-	good := domain.Citation{SourceID: "s1", Quote: "governs flux decay", Locator: "p1"}
+	good := domain.Citation{SourceID: "s1", Quote: "constant governs flux decay", Locator: "p1"}
 	bad := domain.Citation{SourceID: "s1", Quote: "this quote is not in the source"}
 	chk := checkFn(func(context.Context, domain.CheckInput) ([]domain.ClaimResult, error) {
 		return []domain.ClaimResult{
@@ -243,8 +244,8 @@ func TestFinishFillsAbsentVerifiesCitationAndSchedulesOnce(t *testing.T) {
 	if rep.Results[0].Correction == nil || rep.Results[0].Citation == nil {
 		t.Error("verified correction was dropped")
 	}
-	if rep.Results[1].Correction != nil || rep.Results[1].Citation != nil {
-		t.Error("correction with an unverifiable quote must be dropped")
+	if r := rep.Results[1]; r.Correction != nil || r.Citation != nil || r.Label != domain.LabelPartial {
+		t.Errorf("unverifiable quote must drop the correction and downgrade to partial: %+v", r)
 	}
 	if r := rep.Results[2]; r.Label != domain.LabelAbsent || *r.ClaimID != "k2" {
 		t.Errorf("want absent k2, got %+v", r)
@@ -315,5 +316,28 @@ func TestEmptyTurnAndUnknownSession(t *testing.T) {
 	}
 	if _, err := e.Start(context.Background(), "missing"); err == nil {
 		t.Error("unknown concept should fail")
+	}
+}
+
+// Regression for F1: the real checker verifies a quote that spans a line break
+// in the source. Finish must keep that citation and the contradicted label.
+func TestFinishKeepsCitationAcrossLineBreak(t *testing.T) {
+	src := "The zorblat constant governs\nflux decay in every closed loop."
+	srcs := []domain.Source{{ID: "s1", Kind: domain.SourceCourse, Title: "Unit 1", Text: src}}
+	c := domain.Concept{ID: conceptID, Claims: []domain.Claim{{ID: "k1", ConceptID: conceptID, Text: claim1, SourceID: "s1", Required: true}}}
+	reply := `{"results":[{"claim_id":"k1","student_text":"it controls growth","label":"contradicted",` +
+		`"citation":{"source_id":"s1","quote":"constant governs flux decay","locator":"p1"},"correction":"It governs flux decay.","probe_hint":null}]}`
+	chk := &checker.Checker{LLM: &fakes.LLM{JSONReply: reply}}
+	e := New(NewMemStore(srcs, c), &fakes.LLM{}, chk, &fakes.Scheduler{}, Options{})
+	s, _ := e.Start(context.Background(), conceptID)
+	drain(t, must(e.Turn(context.Background(), s.ID, "it controls growth", "")))
+
+	rep, err := e.Finish(context.Background(), s.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := rep.Results[0]
+	if r.Label != domain.LabelContradicted || r.Citation == nil || r.Correction == nil {
+		t.Fatalf("verified citation was dropped at Finish: %+v", r)
 	}
 }

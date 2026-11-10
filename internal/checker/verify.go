@@ -4,6 +4,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/CrisH2307/repetition-study/internal/cite"
 	"github.com/CrisH2307/repetition-study/internal/domain"
 )
 
@@ -27,21 +28,14 @@ type Outcome struct {
 	Proposed, Valid int
 }
 
-// normalize collapses all whitespace runs to one space.
-func normalize(s string) string { return strings.Join(strings.Fields(s), " ") }
-
-// verifyCitation reports whether c quotes an approved source exactly, after
-// whitespace normalization only. No case folding, no quote-mark mapping.
+// verifyCitation reports whether c quotes an approved source. internal/cite
+// does the actual check.
 func verifyCitation(c *domain.Citation, sources map[string]string) bool {
 	if c == nil {
 		return false
 	}
 	text, ok := sources[c.SourceID]
-	if !ok {
-		return false
-	}
-	q := normalize(c.Quote)
-	return q != "" && strings.Contains(normalize(text), q)
+	return ok && cite.Verify(text, c.Quote)
 }
 
 func words(s string) []string {
