@@ -1,5 +1,7 @@
 Closes #
 
+Label: one of Bug, User Story, Test, Doc, Issue, question (same as the issue), plus phase-0
+
 ## What changed (one or two sentences)
 
 ## Unit and files

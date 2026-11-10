@@ -14,10 +14,10 @@ scripts/unit.sh P0-CITE
 
 | Step | Who | What |
 | --- | --- | --- |
-| 1. Issue | Cris or the main agent | One issue per unit, label `phase-0`, title starts with the unit name, acceptance copied from `rpi/<unit>/PROMPT.md` |
+| 1. Issue | Cris or the main agent | One issue per unit, labels `phase-0`, a wave label and one type label (`Bug`, `User Story`, `Test`, `Doc`, `Issue`, `question`), title starts with the unit name, acceptance copied from `rpi/<unit>/PROMPT.md` |
 | 2. Branch | Agent | From `qa`, named in `.claude/boundaries.json` |
 | 3. Build | Agent | Small commits, tests, `impl-log.md` updated |
-| 4. PR into `qa` | Agent | `gh pr create --base qa`, body "Closes #n", tests run, what is unverified. Agents never merge |
+| 4. PR into `qa` | Agent | `gh pr create --base qa`, same labels as the issue, body "Closes #n", tests run, what is unverified. Agents never merge |
 | 5. Review | Main agent | Diff stays in its files, tests pass, `/code-review` for risky units. Result left as a PR comment |
 | 6. Merge into `qa` | Cris | Use "Create a merge commit", not squash, once checks are green |
 | 7. Test on `qa` | Dino | Follows `docs/TESTING.md`. Each problem becomes a bug issue |
