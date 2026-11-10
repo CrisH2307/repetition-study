@@ -1,0 +1,4 @@
+- ApplyTeachBackSession + session_id on events: `go test ./internal/srs/...` ok (restart retry gives 1 event; 4 concurrent retries give 1 event).
+- Throwaway DB per srs test: dev review_events count 68 before and after; no srs_test_* databases left.
+- cmd/migrate advisory lock: 3 parallel runs on a fresh DB applied each of 3 migrations once.
+- Append-only test added in srs; benchmark 1.6 ms/1000 concepts.
