@@ -30,27 +30,32 @@ Claim: "If T ~ Exp(λ), then P(T > t) = e^{-λt} for t >= 0."
 
 ## Steps
 
-1. Open Terminal, go to the project folder, and get the newest files:
-   `git switch qa` then `git pull`.
-2. Open your sheet: Dino uses `eval/data/labels_dino.csv`, the classmate uses
-   `eval/data/labels_classmate.csv`. Google Sheets works: File, Import, Upload.
-3. For each row, read the `explanation` and the `claim`, then type one of the
+1. Download your CSV file from Cris (Dino: `labels_dino.csv`, classmate:
+   `labels_classmate.csv`) and open it in Google Sheets: File, Import, Upload.
+2. For each row, read the `explanation` and the `claim`, then type one of the
    four labels in the `label` column, in lower case. Use `note` for anything
    you were unsure about (optional).
-4. Do not change any other column. Do not add, delete or sort rows.
-5. Save as CSV with the same file name (Google Sheets: File, Download,
-   Comma-separated values) and put it back in `eval/data/`, replacing the old file.
-6. When both sheets are done, run:
-   `python3 scripts/check_labels.py`
+3. Fill in only the `label` and `note` columns. Do not change any other column.
+   Do not add, delete or sort rows.
+4. Math may show as symbols in Sheets. That is fine, because only the `label`
+   and `note` columns are used.
+5. Download it again: File, Download, Comma-separated values (.csv). Keep the
+   same file name and send the file to Cris. Do not share your answers with the
+   other labeller.
+
+## What Cris does
+
+1. Put the two files in `eval/data/`, then run `python3 scripts/check_labels.py`.
+2. If it lists disagreements, the two labellers sit together, read each one,
+   and type the label they both agree on in the `label` column of
+   `eval/data/labels_resolved.csv` (the script creates that file).
+3. Run `python3 scripts/check_labels.py --freeze`. Pass is the line that
+   starts with "Frozen." Cris commits the files.
 
 ## What pass looks like
 
 - The script prints "You agree on N of 80 claim labels" and a kappa number.
-- If it lists disagreements, sit together, read each one, and type the label
-  you both agree on in the `label` column of `eval/data/labels_resolved.csv`
-  (the script creates that file for you).
-- Then run `python3 scripts/check_labels.py --freeze`. Pass is the line that
-  starts with "Frozen." Tell Cris; Cris commits the files.
+- The freeze step prints "Frozen."
 
 ## If something goes wrong
 
