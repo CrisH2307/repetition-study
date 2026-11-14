@@ -363,11 +363,18 @@ func (s *Scheduler) Due(ctx context.Context, now time.Time) ([]domain.DueItem, e
 // ponytail: the latest event is picked by created_at; two events in the same
 // instant may tie. Fine for reasons, add a sequence column if it matters.
 func (s *Scheduler) DueWithReasons(ctx context.Context, now time.Time) ([]ReasonedDue, error) {
-	rows, err := s.db.Query(ctx, `SELECT c.id, c.name, s.due_at, e.event_type, e.grade, e.payload->>'reason'
+	// Scheduled concepts due now come first, by due date. A concept with no
+	// schedule row is new and due now, listed after them. Nothing is written.
+	rows, err := s.db.Query(ctx, `SELECT id, name, due_at, event_type, grade, reason, bucket FROM (
+		SELECT c.id, c.name, s.due_at, e.event_type, e.grade, e.payload->>'reason' AS reason, 0 AS bucket
 		FROM concept_schedules s JOIN concepts c ON c.id = s.concept_id
 		LEFT JOIN LATERAL (SELECT event_type, grade, payload FROM review_events
 			WHERE concept_id = s.concept_id ORDER BY created_at DESC, id LIMIT 1) e ON true
-		WHERE s.due_at <= $1 ORDER BY s.due_at, c.id`, now)
+		WHERE s.due_at <= $1
+		UNION ALL
+		SELECT c.id, c.name, $1::timestamptz, NULL, NULL, NULL, 1
+		FROM concepts c WHERE NOT EXISTS (SELECT 1 FROM concept_schedules s WHERE s.concept_id = c.id)
+	) d ORDER BY bucket, due_at, id`, now)
 	if err != nil {
 		return nil, err
 	}
@@ -378,11 +385,15 @@ func (s *Scheduler) DueWithReasons(ctx context.Context, now time.Time) ([]Reason
 	for rows.Next() {
 		var it ReasonedDue
 		var et, g, why *string
-		if err := rows.Scan(&it.ConceptID, &it.ConceptName, &it.DueAt, &et, &g, &why); err != nil {
+		var bucket int
+		if err := rows.Scan(&it.ConceptID, &it.ConceptName, &it.DueAt, &et, &g, &why, &bucket); err != nil {
 			return nil, err
 		}
 		it.DueAt = it.DueAt.UTC()
 		it.Reason = dueReason(et, g, why)
+		if bucket == 1 {
+			it.Reason = "New topic: not taught yet"
+		}
 		out, ids, reasons[it.ConceptID] = append(out, it), append(ids, it.ConceptID), it.Reason
 	}
 	if err := rows.Err(); err != nil {
