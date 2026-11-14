@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -86,9 +87,12 @@ type runner struct {
 	d     *dataset
 	bud   *budget
 
-	memo      map[string]checker.Outcome
-	explCalls []llm.Call // one entry per explanation check, for the cost row
-	sheet     [][]string // citations for a person to rate
+	student      domain.LLM // nil without a student model
+	studentModel string
+	turns        int // student turns in one cost session
+
+	memo  map[string]checker.Outcome
+	sheet [][]string // citations for a person to rate
 }
 
 // check runs the checker once per key and remembers the answer, so suites that
@@ -99,15 +103,10 @@ func (r *runner) check(key, conceptID, text, latex string) (checker.Outcome, err
 	}
 	ctx, cancel := context.WithTimeout(r.ctx, callTimeout)
 	defer cancel()
-	from := len(r.bud.meter.Calls())
 	// Each text is a finished session, so the checker runs in finish mode.
 	o, err := r.ck.CheckDetailed(ctx, domain.CheckInput{Concept: r.d.Concepts[conceptID], Sources: r.d.Unit.Sources, Transcript: text, LaTeX: latex})
-	call := r.bud.since(from)
 	if err != nil {
 		return o, fmt.Errorf("%s: %w", key, err)
-	}
-	if strings.HasPrefix(key, "e/") {
-		r.explCalls = append(r.explCalls, call)
 	}
 	if r.memo == nil {
 		r.memo = map[string]checker.Outcome{}
@@ -533,23 +532,16 @@ func (r *runner) coverage() result {
 	return res
 }
 
-// leakRun is the leak suite's result plus what the cost row needs from it.
-type leakRun struct {
-	res      result
-	turns    []llm.Call // one per student turn
-	measured bool
-}
-
 var quiet = slog.New(slog.DiscardHandler)
 
 // leak runs adversarial sessions through the real teach engine and looks for
 // replies that copy text the human never said.
-func leak(ctx context.Context, student domain.LLM, d *dataset, bud *budget) leakRun {
+func leak(ctx context.Context, student domain.LLM, d *dataset) result {
 	const key = "leak"
 	if d.LeakWhy != "" {
-		return leakRun{res: skip(key, d.LeakWhy)}
+		return skip(key, d.LeakWhy)
 	}
-	out := leakRun{res: result{Key: key}}
+	out := struct{ res result }{result{Key: key}}
 	var hard, soft int
 	var all strings.Builder
 	for _, s := range d.Leak {
@@ -558,14 +550,12 @@ func leak(ctx context.Context, student domain.LLM, d *dataset, bud *budget) leak
 		eng := teach.New(teach.NewMemStore(d.Unit.Sources, c), student, &fakes.Checker{}, &fakes.Scheduler{}, teach.Options{Log: quiet})
 		ts, err := eng.Start(ctx, c.ID)
 		if err != nil {
-			return leakRun{res: stopped(key, err)}
+			return stopped(key, err)
 		}
 		for _, human := range []string{s.Teach, s.Probe} {
-			from := len(bud.meter.Calls())
 			reply, err := turn(ctx, eng, ts.ID, human)
-			out.turns = append(out.turns, bud.since(from))
 			if err != nil {
-				return leakRun{res: stopped(key, fmt.Errorf("%s: %w", s.ID, err))}
+				return stopped(key, fmt.Errorf("%s: %w", s.ID, err))
 			}
 			copied := copies(reply, d.Unit.Sources, c.Claims, s.Teach+" "+s.Probe)
 			broke := oneQuestion(reply)
@@ -583,7 +573,6 @@ func leak(ctx context.Context, student domain.LLM, d *dataset, bud *budget) leak
 			}
 		}
 	}
-	out.measured = true
 	out.res.Private = append(out.res.Private, "### Every leak session, for a person to read\n\n"+all.String())
 	out.res.Headline = fmt.Sprintf("Sessions run: %d. Replies that copy untaught course text: %d (bar 0). Replies that broke the one-short-question rule: %d (shown below, not part of the bar).", len(d.Leak), hard, soft)
 	out.res.Lines = []string{"Code only catches a reply that copies 5 or more words in a row from the source or the claims. A fact given in other words is not caught, so a person must read the replies in the private details file before this row can pass.\n"}
@@ -591,7 +580,7 @@ func leak(ctx context.Context, student domain.LLM, d *dataset, bud *budget) leak
 	if hard > 0 {
 		out.res.Status = fail
 	}
-	return out
+	return out.res
 }
 
 func turn(ctx context.Context, eng *teach.Engine, session, human string) (string, error) {
@@ -661,50 +650,112 @@ func oneQuestion(reply string) string {
 
 const costBar = 0.08
 
-// cost estimates one session: one final check plus the student's turns.
-func (r *runner) cost(models llm.Models, lk leakRun, studentModel string, turns int) result {
+// costSessions runs full-length sessions through the real teach engine:
+// turns AI student turns, then the final check at Finish by the checker under
+// test. One session per concept in the split, taught with the sentences of
+// its first explanation (repeated when there are fewer sentences than turns).
+// A session costs every call it made, cut-short student replies included.
+func (r *runner) cost(models llm.Models) result {
 	const key = "cost"
-	res := result{Key: key}
-	n := len(r.explCalls)
-	if n == 0 {
-		return skip(key, "no explanation was checked, so there is no cost to report")
-	}
-	var sum llm.Call
-	lat := make([]time.Duration, n)
-	for i, c := range r.explCalls {
-		lat[i] = c.Latency
-		sum.In, sum.Out, sum.Cost, sum.Latency = sum.In+c.In, sum.Out+c.Out, sum.Cost+c.Cost, sum.Latency+c.Latency
-	}
-	sort.Slice(lat, func(i, j int) bool { return lat[i] < lat[j] })
-	res.Lines = []string{fmt.Sprintf("- Final check, %d runs: mean %d tokens in, %d out. Time: median %s, 95th percentile %s, slowest %s.\n",
-		n, sum.In/int64(n), sum.Out/int64(n), lat[n/2].Round(time.Millisecond), lat[min(n-1, n*95/100)].Round(time.Millisecond), lat[n-1].Round(time.Millisecond))}
-	if !models.Priced(r.model) {
-		res.Status = notRun
-		res.Headline = fmt.Sprintf("Not measured: %s has no price in internal/llm/models.json, so cost cannot be computed.", r.model)
-		return res
-	}
-	check := sum.Cost / float64(n)
-	res.Lines = append(res.Lines, fmt.Sprintf("- Final check cost: $%.4f per session (mean of %d runs, prices from models.json).\n", check, n))
 	switch {
-	case check > costBar:
-		res.Status = fail
-		res.Headline = fmt.Sprintf("The final check alone costs $%.4f per session (bar at most $%.2f).", check, costBar)
-	case !lk.measured || len(lk.turns) == 0 || !models.Priced(studentModel):
-		res.Status = partial
-		res.Headline = fmt.Sprintf("The final check costs $%.4f per session (bar at most $%.2f for the whole session). The AI student's share was not measured: it needs the leak suite with a student model that has a price in models.json.", check, costBar)
-	default:
-		var st float64
-		for _, c := range lk.turns {
-			st += c.Cost
+	case r.d.ExplWhy != "":
+		return skip(key, r.d.ExplWhy)
+	case r.student == nil:
+		return skip(key, "no student model was given (--student-model or STUDENT_MODEL), so no full session could run")
+	case !models.Priced(r.model):
+		return result{Key: key, Status: notRun, Headline: fmt.Sprintf("Not measured: %s has no price in internal/llm/models.json, so cost cannot be computed.", r.model)}
+	case !models.Priced(r.studentModel):
+		return result{Key: key, Status: notRun, Headline: fmt.Sprintf("Not measured: the student model %s has no price in internal/llm/models.json, so cost cannot be computed.", r.studentModel)}
+	}
+	seen := map[string]bool{}
+	var costs []float64
+	var turnLat, finLat []time.Duration
+	cut := 0
+	for _, e := range r.d.Expl {
+		if seen[e.ConceptID] {
+			continue
 		}
-		per := st / float64(len(lk.turns))
-		total := check + float64(turns)*per
-		res.Lines = append(res.Lines, fmt.Sprintf("- AI student (%s): $%.5f per turn (mean of %d turns), counted as %d turns per session.\n", studentModel, per, len(lk.turns), turns))
-		res.Headline = fmt.Sprintf("One session costs $%.4f: one final check plus %d student turns (bar at most $%.2f).", total, turns, costBar)
-		res.Status = fail
-		if total <= costBar {
-			res.Status = pass
+		seen[e.ConceptID] = true
+		c := r.d.Concepts[e.ConceptID]
+		eng := teach.New(teach.NewMemStore(r.d.Unit.Sources, c), r.student, asChecker{r.ck}, &fakes.Scheduler{}, teach.Options{Log: quiet, CheckTimeout: callTimeout})
+		ts, err := eng.Start(r.ctx, c.ID)
+		if err != nil {
+			return stopped(key, err)
 		}
+		from := len(r.bud.meter.Calls())
+		said := sentences(e.Text)
+		for i := 0; i < r.turns; i++ {
+			t0 := time.Now()
+			if _, err := turn(r.ctx, eng, ts.ID, said[i%len(said)]); err != nil {
+				return stopped(key, fmt.Errorf("session on %s, turn %d: %w", e.ID, i+1, err))
+			}
+			turnLat = append(turnLat, time.Since(t0))
+		}
+		t0 := time.Now()
+		rep, err := eng.Finish(r.ctx, ts.ID)
+		if err == nil && rep.Status != domain.ReportChecked {
+			err = errors.New("the final check failed, so the report was unchecked")
+			if r.bud.hit {
+				err = errBudget
+			}
+		}
+		if err != nil {
+			return stopped(key, fmt.Errorf("session on %s: %w", e.ID, err))
+		}
+		finLat = append(finLat, time.Since(t0))
+		costs = append(costs, r.bud.since(from).Cost)
+		for _, call := range r.bud.meter.Calls()[from:] {
+			if call.CutShort {
+				cut++
+			}
+		}
+	}
+	worst, sum := 0.0, 0.0
+	for _, x := range costs {
+		worst, sum = max(worst, x), sum+x
+	}
+	res := result{Key: key, Status: fail}
+	if worst <= costBar {
+		res.Status = pass
+	}
+	res.Headline = fmt.Sprintf("Dearest session: $%.4f, mean $%.4f, over %d full sessions of %d student turns and one final check (bar at most $%.2f per session).", worst, sum/float64(len(costs)), len(costs), r.turns, costBar)
+	res.Lines = []string{
+		fmt.Sprintf("- Final check time: %s.\n", spread(finLat)),
+		fmt.Sprintf("- AI student turn time (whole reply): %s.\n", spread(turnLat)),
+		fmt.Sprintf("- Student replies cut short by the 2-sentence cap: %d, each billed at the full reply cap (an upper bound).\n", cut),
 	}
 	return res
+}
+
+func spread(d []time.Duration) string {
+	if len(d) == 0 {
+		return "none"
+	}
+	s := slices.Clone(d)
+	slices.Sort(s)
+	n := len(s)
+	return fmt.Sprintf("median %s, 95th percentile %s, slowest %s (%d)", s[n/2].Round(time.Millisecond), s[min(n-1, n*95/100)].Round(time.Millisecond), s[n-1].Round(time.Millisecond), n)
+}
+
+// sentences splits a student's text into turns. ponytail: splits on ". ",
+// which is enough for our own explanations.
+func sentences(t string) []string {
+	var out []string
+	for _, p := range strings.SplitAfter(t, ". ") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	if len(out) == 0 {
+		return []string{t}
+	}
+	return out
+}
+
+// asChecker lets the teach engine call the checker under test.
+type asChecker struct{ d detailed }
+
+func (a asChecker) Check(ctx context.Context, in domain.CheckInput) ([]domain.ClaimResult, error) {
+	o, err := a.d.CheckDetailed(ctx, in)
+	return o.Results, err
 }

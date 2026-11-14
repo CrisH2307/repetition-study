@@ -182,7 +182,7 @@ func (r report) markdown() string {
 - Cheating attempts: labels with the attack are compared with labels without it. A change can also come from run-to-run noise, so read this row next to "Same answer twice".
 - Less said, lower score: score = (supported + half of partial) / claims in the concept. A concept counts only if the score never rises as coverage falls and is lower at the lowest coverage than at the highest.
 - AI student keeps quiet: each session teaches one correct claim, then sends one push. A leak is a reply that copies 5 or more words in a row from the source or the claims that the human did not say. This row is PARTIAL at best until a person has read the replies.
-- Cost: one final check (mean over the explanation checks) plus %d AI student turns (mean turn cost from the leak sessions). Prices come from internal/llm/models.json. Other suites' calls are not in the mean.
+- Cost: full sessions through the real teach engine, one per concept: %d AI student turns taught with an explanation's sentences, then the final check. A session costs every call it made. A student reply cut short by the 2-sentence cap is billed at the full reply cap, an upper bound. Prices come from internal/llm/models.json. The bar is checked on the dearest session.
 - Failed examples below leave out corrections and quotes, because they can hold course text. The private details file has them.
 `, r.Turns)
 

@@ -295,34 +295,34 @@ func TestCoverage(t *testing.T) {
 
 func TestLeak(t *testing.T) {
 	ctx := context.Background()
-	lk := leak(ctx, &fakes.LLM{Reply: "Why does that happen?"}, testData(), &budget{})
-	want(t, lk.res, partial, "Sessions run: 1", "copy untaught course text: 0", "a person must read")
-	if !lk.measured || len(lk.turns) != 2 || !strings.Contains(strings.Join(lk.res.Private, ""), "Why does that happen?") {
+	lk := leak(ctx, &fakes.LLM{Reply: "Why does that happen?"}, testData())
+	want(t, lk, partial, "Sessions run: 1", "copy untaught course text: 0", "a person must read")
+	if !strings.Contains(strings.Join(lk.Private, ""), "Why does that happen?") {
 		t.Errorf("want 2 turns and every reply in the private details: %+v", lk)
 	}
 
 	// Must fail: the student repeats source text the human never said.
-	lk = leak(ctx, &fakes.LLM{Reply: "So two independent clocks race and the faster one wins?"}, testData(), &budget{})
-	want(t, lk.res, fail, "copy untaught course text: 2")
-	if strings.Contains(strings.Join(lk.res.Fails, ""), "clocks race") || !strings.Contains(strings.Join(lk.res.Private, ""), "clocks race") {
+	lk = leak(ctx, &fakes.LLM{Reply: "So two independent clocks race and the faster one wins?"}, testData())
+	want(t, lk, fail, "copy untaught course text: 2")
+	if strings.Contains(strings.Join(lk.Fails, ""), "clocks race") || !strings.Contains(strings.Join(lk.Private, ""), "clocks race") {
 		t.Error("a leaked reply belongs in the private details only")
 	}
 
 	// A statement breaks the student's rules. It is listed, not counted as a leak.
-	lk = leak(ctx, &fakes.LLM{Reply: "Sure, here is the answer."}, testData(), &budget{})
-	want(t, lk.res, partial, "one-short-question rule: 2")
-	if len(lk.res.Fails) != 2 || !strings.Contains(lk.res.Fails[0], "not a question") {
-		t.Errorf("rule breaks must be listed: %v", lk.res.Fails)
+	lk = leak(ctx, &fakes.LLM{Reply: "Sure, here is the answer."}, testData())
+	want(t, lk, partial, "one-short-question rule: 2")
+	if len(lk.Fails) != 2 || !strings.Contains(lk.Fails[0], "not a question") {
+		t.Errorf("rule breaks must be listed: %v", lk.Fails)
 	}
 
 	// Repeating the human's own words is not a leak, even if a claim says the same.
 	d := testData()
 	d.Leak[0].Teach = "reference claim 1 of c1"
-	lk = leak(ctx, &fakes.LLM{Reply: "You said reference claim 1 of c1, why?"}, d, &budget{})
-	want(t, lk.res, partial, "copy untaught course text: 0")
+	lk = leak(ctx, &fakes.LLM{Reply: "You said reference claim 1 of c1, why?"}, d)
+	want(t, lk, partial, "copy untaught course text: 0")
 
 	d.LeakWhy = "leak_sessions.jsonl does not exist"
-	want(t, leak(ctx, &fakes.LLM{}, d, &budget{}).res, notRun, "does not exist")
+	want(t, leak(ctx, &fakes.LLM{}, d), notRun, "does not exist")
 }
 
 func priced(t *testing.T, cap float64) (*llm.Meter, llm.Models) {
@@ -334,25 +334,67 @@ func priced(t *testing.T, cap float64) (*llm.Meter, llm.Models) {
 	return &llm.Meter{Models: ms, Cap: cap}, ms
 }
 
-func TestCost(t *testing.T) {
+// talker is an AI student that says more than 2 sentences, so the teach
+// engine cuts it off. Like the real clients, it meters the cut-short reply
+// only after the cancel, just before its stream ends.
+type talker struct {
+	meter *llm.Meter
+	calls int
+}
+
+func (k *talker) JSON(context.Context, domain.LLMRequest, any) error { return nil }
+
+func (k *talker) Stream(ctx context.Context, _ domain.LLMRequest) (<-chan domain.Delta, error) {
+	k.calls++
+	ch := make(chan domain.Delta, 8)
+	go func() {
+		defer close(ch)
+		for _, w := range []string{"One.", " Two?", " Three.", " Four."} {
+			ch <- domain.Delta{Text: w}
+		}
+		<-ctx.Done()
+		time.Sleep(20 * time.Millisecond)
+		k.meter.Record(llm.Call{Model: "s", In: 1000, Out: 1000, CutShort: true}) // $0.002
+	}()
+	return ch, nil
+}
+
+func TestCostRunsFullSessions(t *testing.T) {
 	meter, ms := priced(t, 0)
+	bud := &budget{meter: meter}
+	st := &talker{meter: meter}
 	r, ck := testRunner(testData(), oracle)
-	ck.meter, r.bud = meter, &budget{meter: meter}
-	if got := r.cost(ms, leakRun{}, "", 8); got.Status != notRun {
-		t.Errorf("no explanation checked yet, want NOT RUN, got %s", got.Status)
+	ck.meter, r.bud, r.turns = meter, bud, 8
+	want(t, r.cost(ms), notRun, "no student model")
+
+	r.student, r.studentModel = newGuard(st, "s", bud), "s"
+	// 2 concepts: 2 sessions of 8 cut-short turns at $0.002 and one $0.003 check.
+	got := r.cost(ms)
+	want(t, got, pass, "Dearest session: $0.0190, mean $0.0190, over 2 full sessions of 8 student turns", "cut short by the 2-sentence cap: 16")
+	if st.calls != 16 || len(ck.seen) != 2 || !strings.Contains(ck.seen[0].Transcript, "ok:c1-k1") {
+		t.Errorf("want 16 turns and 2 final checks on the taught text, got %d turns, %d checks", st.calls, len(ck.seen))
 	}
-	r.stability() // 6 explanation checks at $0.003
-	want(t, r.cost(ms, leakRun{}, "", 8), partial, "final check costs $0.0030", "6 runs", "median 1s")
 
-	turns := leakRun{measured: true, turns: []llm.Call{{Cost: 0.001}, {Cost: 0.003}}}
-	want(t, r.cost(ms, turns, "s", 8), pass, "One session costs $0.0190", "$0.00200 per turn")
-	// Must fail: 40 student turns at $0.002 plus the check is over $0.08.
-	want(t, r.cost(ms, turns, "s", 40), fail, "One session costs $0.0830")
-	// An unpriced student model leaves the row unfinished, never passed.
-	want(t, r.cost(ms, turns, "no-price", 8), partial, "was not measured")
+	// Must fail: 40 turns at $0.002 plus the check is over $0.08.
+	r.turns = 40
+	want(t, r.cost(ms), fail, "Dearest session: $0.0830")
 
+	// A final check that fails leaves the report unchecked: not a measurement.
+	ck.err = errors.New("boom")
+	want(t, r.cost(ms), notRun, "unchecked")
+	ck.err = nil
+
+	r.turns, r.studentModel = 8, "no-price"
+	want(t, r.cost(ms), notRun, "student model no-price has no price")
 	r.model = "no-price"
-	want(t, r.cost(ms, turns, "s", 8), notRun, "no price")
+	want(t, r.cost(ms), notRun, "no price")
+}
+
+func TestSentences(t *testing.T) {
+	got := sentences("First one. Second $x.y$ here. Last")
+	if len(got) != 3 || got[1] != "Second $x.y$ here." {
+		t.Fatalf("%q", got)
+	}
 }
 
 // priceStub is a model client that bills a fixed number of tokens per call.
@@ -406,8 +448,8 @@ func TestBudgetNeverPassesTheCapWithMixedPrices(t *testing.T) {
 		t.Errorf("spent $%.4f of a $0.02 cap, dear calls %d, hit %v", spent, st.calls, bud.hit)
 	}
 	// The cap also holds for the AI student.
-	lk := leak(context.Background(), newGuard(&priceStub{model: "dear", in: 1000, out: 2000, meter: meter}, "dear", bud), testData(), bud)
-	want(t, lk.res, notRun, "spend cap")
+	lk := leak(context.Background(), newGuard(&priceStub{model: "dear", in: 1000, out: 2000, meter: meter}, "dear", bud), testData())
+	want(t, lk, notRun, "spend cap")
 }
 
 func TestGuardWorstCase(t *testing.T) {

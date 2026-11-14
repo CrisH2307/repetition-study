@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/CrisH2307/repetition-study/internal/checker"
+	"github.com/CrisH2307/repetition-study/internal/domain"
 	"github.com/CrisH2307/repetition-study/internal/llm"
 )
 
@@ -51,7 +52,7 @@ func run(args []string, stdout io.Writer) error {
 	outDir := fs.String("out", "eval/results", "where gate.md is written")
 	privDir := fs.String("private-out", "content/private/eval", "where details that can hold course text are written (never committed)")
 	maxCost := fs.Float64("max-cost", 5, "stop before metered cost passes this many USD, all models and suites together (0 = no cap)")
-	turns := fs.Int("turns", 8, "AI student turns counted in one session for the cost row")
+	turns := fs.Int("turns", 8, "AI student turns in each full session of the cost row")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -104,22 +105,22 @@ func run(args []string, stdout io.Writer) error {
 		}
 	}
 
-	// Leak first: the cost row needs the student's cost per turn.
-	var lk leakRun
-	if on("leak") {
-		switch {
-		case *student == "":
-			lk.res = skip("leak", "no student model was given (--student-model or STUDENT_MODEL)")
-		default:
-			// Same constructor the server uses, so a pass here certifies the shipped path.
-			sl, err := llm.New(ctx, *student, meter)
-			if err != nil {
-				return err
-			}
-			fmt.Fprintf(stdout, "leak suite, student model %s...\n", *student)
-			lk = leak(ctx, newGuard(sl, *student, bud), d, bud)
+	// Same constructor the server uses, so a pass here certifies the shipped path.
+	var sl domain.LLM
+	if *student != "" {
+		l, err := llm.New(ctx, *student, meter)
+		if err != nil {
+			return err
 		}
-		rep.Leak = &lk.res
+		sl = newGuard(l, *student, bud)
+	}
+	if on("leak") {
+		lk := skip("leak", "no student model was given (--student-model or STUDENT_MODEL)")
+		if sl != nil {
+			fmt.Fprintf(stdout, "leak suite, student model %s...\n", *student)
+			lk = leak(ctx, sl, d)
+		}
+		rep.Leak = &lk
 	}
 
 	var sheet [][]string
@@ -128,7 +129,7 @@ func run(args []string, stdout io.Writer) error {
 		if err != nil {
 			return err
 		}
-		r := &runner{ctx: ctx, model: m, d: d, bud: bud,
+		r := &runner{ctx: ctx, model: m, d: d, bud: bud, student: sl, studentModel: *student, turns: *turns,
 			ck: &checker.Checker{LLM: newGuard(l, m, bud), Model: m, AllowAbsent: true, Log: quiet}}
 		mr := modelReport{Model: m}
 		steps := []struct {
@@ -137,7 +138,7 @@ func run(args []string, stdout io.Writer) error {
 		}{
 			{"human", r.human}, {"perturb", r.perturb}, {"citations", r.citations}, {"stability", r.stability},
 			{"injection", r.injection}, {"coverage", r.coverage},
-			{"cost", func() result { return r.cost(meter.Models, lk, *student, *turns) }},
+			{"cost", func() result { return r.cost(meter.Models) }},
 		}
 		for _, s := range steps {
 			if !on(s.key) {
