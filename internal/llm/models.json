@@ -3,7 +3,8 @@
   "models": {
     "claude-sonnet-5-5": {"vendor": "anthropic", "in_per_mtok": 2, "out_per_mtok": 10, "source": "docs/improved/strategy-review-fable.md section 4.5, from Anthropic pricing page, unverified by code"},
     "openrouter/anthropic/claude-sonnet-5.5": {"vendor": "openrouter", "in_per_mtok": 2, "out_per_mtok": 10, "source": "openrouter.ai/api/v1/models, pricing.prompt 0.000002 and pricing.completion 0.00001 per token, read 2026-11-14"},
-    "openrouter/google/gemini-3.8-flash": {"vendor": "openrouter", "in_per_mtok": 0.825, "out_per_mtok": 4.125, "source": "openrouter.ai/api/v1/models, pricing.prompt 0.000000825 and pricing.completion 0.000004125 per token, read 2026-11-14"}
+    "openrouter/google/gemini-3.8-flash": {"vendor": "openrouter", "in_per_mtok": 0.825, "out_per_mtok": 4.125, "source": "openrouter.ai/api/v1/models, pricing.prompt 0.000000825 and pricing.completion 0.000004125 per token, read 2026-11-14"},
+    "openrouter/openai/gpt-6-luna": {"vendor": "openrouter", "in_per_mtok": 0.10, "out_per_mtok": 0.50, "source": "openrouter.ai/api/v1/models, pricing.prompt 0.0000001 and pricing.completion 0.0000005 per token, read 2026-11-14 (rises above 272000 prompt tokens, not modeled)"}
   },
   "gemini_default": {"thinking_budget": 0, "note": "Explicit thinking setting for Gemini models without an entry. Whether the student model accepts budget 0 is unverified."}
 }

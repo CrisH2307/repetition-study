@@ -158,3 +158,37 @@ func TestNewRoutesOpenRouter(t *testing.T) {
 		}
 	}
 }
+
+// GPT 6 Luna fills both roles: reasoning is requested minimal on Stream and
+// JSON, and reasoning tokens inside completion_tokens are metered and priced.
+func TestOpenRouterLunaBothRoles(t *testing.T) {
+	const luna = "openrouter/openai/gpt-6-luna"
+	var body string
+	srv := orServer(t, &body, func(w http.ResponseWriter) {
+		if strings.Contains(body, `"stream":true`) {
+			w.Header().Set("Content-Type", "text/event-stream")
+			fmt.Fprint(w, `data: {"choices":[{"delta":{"content":"Why?"}}],"usage":{"prompt_tokens":10,"completion_tokens":90,"completion_tokens_details":{"reasoning_tokens":80}}}`+"\n\ndata: [DONE]\n\n")
+			return
+		}
+		fmt.Fprint(w, `{"choices":[{"message":{"content":"{}"}}],"usage":{"prompt_tokens":10,"completion_tokens":90}}`)
+	})
+	defer srv.Close()
+	o := NewOpenRouter("k", luna, srv.URL)
+	o.Meter = &Meter{}
+	var out struct{}
+	if err := o.JSON(context.Background(), orReq, &out); err != nil || !strings.Contains(body, `"reasoning":{"effort":"minimal"}`) || !strings.Contains(body, `"model":"openai/gpt-6-luna"`) {
+		t.Fatalf("JSON err=%v body=%s", err, body)
+	}
+	ch, err := o.Stream(context.Background(), orReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	collect(t, ch)
+	if !strings.Contains(body, `"reasoning":{"effort":"minimal"}`) {
+		t.Errorf("stream body %s", body)
+	}
+	c := o.Meter.Calls()
+	if len(c) != 2 || c[1].Out != 90 || c[1].Cost != 0.0000010+0.000045 {
+		t.Errorf("meter %+v", c)
+	}
+}

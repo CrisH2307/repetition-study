@@ -37,9 +37,6 @@ type OpenRouter struct {
 	// MaxTokens caps a streamed reply, JSONMaxTokens a JSON reply. On most
 	// providers reasoning tokens count against the cap, so it also bounds them.
 	MaxTokens, JSONMaxTokens int64
-	// ThinkingBudget 0 asks for no reasoning on streamed replies. UNVERIFIED
-	// that every routed model accepts reasoning.enabled=false.
-	ThinkingBudget int32
 }
 
 // NewOpenRouter builds a client. baseURL is empty for the real API.
@@ -81,7 +78,12 @@ func (o *OpenRouter) body(req domain.LLMRequest, max int64) (map[string]any, str
 		}
 		msgs = append(msgs, map[string]string{"role": role, "content": m.Content})
 	}
-	return map[string]any{"model": strings.TrimPrefix(model, OpenRouterPrefix), "messages": msgs, "max_tokens": max}, model
+	// Reasoning is kept minimal for both roles so replies stay short and cheap.
+	// Reasoning tokens are billed as output and arrive inside completion_tokens,
+	// so the meter counts them. UNVERIFIED on the live API: that every routed
+	// model accepts effort "minimal" and folds reasoning into completion_tokens.
+	return map[string]any{"model": strings.TrimPrefix(model, OpenRouterPrefix), "messages": msgs, "max_tokens": max,
+		"reasoning": map[string]any{"effort": "minimal"}}, model
 }
 
 // post sends one request. A non-2xx status becomes an error that carries the
@@ -156,9 +158,6 @@ func (o *OpenRouter) Stream(ctx context.Context, req domain.LLMRequest) (<-chan 
 	}
 	body, model := o.body(req, o.MaxTokens)
 	body["stream"] = true
-	if o.ThinkingBudget == 0 {
-		body["reasoning"] = map[string]any{"enabled": false}
-	}
 	return streamRetry(ctx, o.Retry, func(actx context.Context, emit func(string) error) error {
 		start := time.Now()
 		resp, err := o.post(actx, body)
