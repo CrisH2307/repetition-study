@@ -41,10 +41,22 @@ func (f checkFn) Check(ctx context.Context, in domain.CheckInput) ([]domain.Clai
 	return f(ctx, in)
 }
 
-func newEngine(t *testing.T, llm domain.LLM, chk domain.Checker, opt Options) (*Engine, *fakes.Scheduler, *MemStore) {
+// countSched counts scheduler calls. fakes.Scheduler dedupes by session, so
+// its Events alone cannot show a double call.
+type countSched struct {
+	*fakes.Scheduler
+	calls atomic.Int32
+}
+
+func (c *countSched) ApplyTeachBackSession(ctx context.Context, sessionID, conceptID string, results []domain.ClaimResult) (domain.ReviewEvent, error) {
+	c.calls.Add(1)
+	return c.Scheduler.ApplyTeachBackSession(ctx, sessionID, conceptID, results)
+}
+
+func newEngine(t *testing.T, llm domain.LLM, chk domain.Checker, opt Options) (*Engine, *countSched, *MemStore) {
 	t.Helper()
 	st, _, _ := fixtures()
-	sch := &fakes.Scheduler{}
+	sch := &countSched{Scheduler: &fakes.Scheduler{}}
 	return New(st, llm, chk, sch, opt), sch, st
 }
 
@@ -188,8 +200,8 @@ func TestCheckerOutageReportsUnchecked(t *testing.T) {
 			if rep.Status != domain.ReportUnchecked || rep.Schedule != nil || rep.Results == nil || len(rep.Results) != 0 {
 				t.Fatalf("want empty unchecked report, got %+v", rep)
 			}
-			if len(sch.Events) != 0 {
-				t.Fatalf("outage wrote %d review events", len(sch.Events))
+			if n := sch.calls.Load(); n != 0 || len(sch.Events) != 0 {
+				t.Fatalf("outage called the scheduler %d times, wrote %d review events", n, len(sch.Events))
 			}
 			if _, saved := st.Results[s.ID]; saved || st.Finished[s.ID] {
 				t.Fatal("outage must not save results or finish the session")
@@ -216,8 +228,8 @@ func TestFinishRetryAfterOutageWritesOneEvent(t *testing.T) {
 	s, _ := e.Start(context.Background(), conceptID)
 	drain(t, must(e.Turn(context.Background(), s.ID, "it controls decay", "")))
 
-	if rep := must(e.Finish(context.Background(), s.ID)); rep.Status != domain.ReportUnchecked {
-		t.Fatalf("first finish %+v", rep)
+	if rep := must(e.Finish(context.Background(), s.ID)); rep.Status != domain.ReportUnchecked || sch.calls.Load() != 0 {
+		t.Fatalf("first finish %+v, scheduler calls %d", rep, sch.calls.Load())
 	}
 	if _, err := e.Turn(context.Background(), s.ID, "late", ""); err == nil {
 		t.Error("turn after an unchecked finish should fail")
@@ -228,8 +240,8 @@ func TestFinishRetryAfterOutageWritesOneEvent(t *testing.T) {
 	if rep.Status != domain.ReportChecked || rep.Schedule == nil {
 		t.Fatalf("retry %+v", rep)
 	}
-	if len(sch.Events) != 1 || again.Schedule.ID != rep.Schedule.ID {
-		t.Fatalf("want one event, got %d", len(sch.Events))
+	if n := sch.calls.Load(); n != 1 || len(sch.Events) != 1 || again.Schedule.ID != rep.Schedule.ID {
+		t.Fatalf("want one scheduler call and one event, got %d calls, %d events", n, len(sch.Events))
 	}
 	if sid := sch.Events[0].SessionID; sid == nil || *sid != s.ID {
 		t.Fatalf("event not keyed by session: %v", sid)
@@ -257,7 +269,7 @@ func TestFinishCallerCancelIsNotUnchecked(t *testing.T) {
 	if _, err := e.Finish(ctx, s.ID); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("err %v", err)
 	}
-	if _, err := e.GetReport(context.Background(), s.ID); err == nil || len(sch.Events) != 0 {
+	if _, err := e.GetReport(context.Background(), s.ID); err == nil || sch.calls.Load() != 0 || len(sch.Events) != 0 {
 		t.Fatal("cancelled finish left a report or an event")
 	}
 }
@@ -281,8 +293,8 @@ func TestFinishFillsAbsentVerifiesCitationAndSchedulesOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	rep2, _ := e.Finish(context.Background(), s.ID)
-	if len(sch.Events) != 1 || rep2.Schedule.ID != rep.Schedule.ID {
-		t.Fatalf("scheduler ran %d times", len(sch.Events))
+	if n := sch.calls.Load(); n != 1 || len(sch.Events) != 1 || rep2.Schedule.ID != rep.Schedule.ID {
+		t.Fatalf("scheduler ran %d times, wrote %d events", n, len(sch.Events))
 	}
 	if rep.Status != domain.ReportChecked || rep.Schedule == nil || rep.Schedule.EventType != domain.EventTeachBack {
 		t.Fatalf("schedule %+v", rep.Schedule)
