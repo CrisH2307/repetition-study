@@ -165,13 +165,17 @@
     ]
   },
   "P0-GATEPREP": {
-    "branch": "feature/gate-prep",
+    "branch": "fix/gate-prep-review",
     "allow": [
       "cmd/evalcheck/",
       "eval/data/make_gate_sets.py",
       "eval/data/injections.jsonl",
       "eval/data/coverage.jsonl",
       "eval/data/leak_sessions.jsonl",
+      "eval/data/make_perturbations.py",
+      "eval/data/perturbations.jsonl",
+      "eval/data/split.json",
+      "internal/llm/",
       "rpi/P0-GATEPREP/"
     ]
   },
