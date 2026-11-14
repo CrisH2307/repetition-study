@@ -130,7 +130,9 @@ func block(label, text string) string {
 	return label + ":\n\n```text\n" + strings.ReplaceAll(text, "```", "'''") + "\n```\n"
 }
 
-// said lists what the checker returned, without corrections or quotes.
+// said lists the labels the checker returned. It leaves out every word the
+// checker wrote (student_text, corrections, quotes): that model saw the
+// sources, so its words can hold course text and go to the private file only.
 func said(rs []domain.ClaimResult) string {
 	if len(rs) == 0 {
 		return "The checker returned no results.\n"
@@ -141,7 +143,7 @@ func said(rs []domain.ClaimResult) string {
 		if r.ClaimID != nil {
 			id = *r.ClaimID
 		}
-		fmt.Fprintf(&b, "- %s, %s: %q\n", r.Label, id, r.StudentText)
+		fmt.Fprintf(&b, "- %s, %s\n", r.Label, id)
 	}
 	return b.String()
 }
@@ -577,7 +579,9 @@ func leak(ctx context.Context, student domain.LLM, d *dataset) result {
 				all.WriteString("HARD LEAK\n\n")
 			case broke != "":
 				soft++
-				out.res.Fails = append(out.res.Fails, fmt.Sprintf("**%s (%s): rule break, not counted as a leak: %s**\n\n", s.ID, c.Name, broke)+block("Human", human)+block("AI student", reply))
+				title := fmt.Sprintf("%s (%s): rule break, not counted as a leak: %s", s.ID, c.Name, broke)
+				out.res.Fails = append(out.res.Fails, "**"+title+"**\n\n"+block("Human", human)+"The reply is in the private details file, because it can hold course text.\n")
+				out.res.Private = append(out.res.Private, "**"+title+"**\n\n"+block("Human", human)+block("AI student", reply))
 			}
 		}
 	}

@@ -141,6 +141,35 @@ func want(t *testing.T, r result, st status, parts ...string) {
 	}
 }
 
+// The checker's words come from a model that saw the sources. gate.md is
+// committed, so none of them may appear in a failed example.
+func TestFailedExamplesHoldNoModelText(t *testing.T) {
+	leaky := func(in domain.CheckInput) []domain.ClaimResult {
+		out := all(domain.LabelSupported)(in)
+		for i := range out {
+			out[i].StudentText = "SOURCE-WORDS from the course"
+		}
+		return out
+	}
+	d := testData()
+	for i := range d.Perturb {
+		d.Perturb[i].Text = "bad:c1-k1"
+	}
+	r, _ := testRunner(d, leaky)
+	for _, got := range []result{r.human(), r.perturb(), r.coverage()} {
+		if len(got.Fails) == 0 {
+			t.Fatalf("%s: want failed examples", got.Key)
+		}
+		if strings.Contains(strings.Join(got.Fails, ""), "SOURCE-WORDS") {
+			t.Errorf("%s: a failed example holds the checker's student_text", got.Key)
+		}
+	}
+	lk := leak(context.Background(), &fakes.LLM{Reply: "Sure, REPLY-WORDS here."}, testData())
+	if len(lk.Fails) == 0 || strings.Contains(strings.Join(lk.Fails, ""), "REPLY-WORDS") || !strings.Contains(strings.Join(lk.Private, ""), "REPLY-WORDS") {
+		t.Errorf("an AI student reply must be in the private file only: %v", lk.Fails)
+	}
+}
+
 func TestHuman(t *testing.T) {
 	r, _ := testRunner(testData(), oracle)
 	want(t, r.human(), pass, "marked contradicted: 0 of 3", "flagged: 1 of 1", "marked absent: 3 of 3", "| contradicted | 0 | 0 | 1 | 0 |")
