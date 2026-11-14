@@ -265,3 +265,73 @@ func TestNewRoutesAndFake(t *testing.T) {
 		t.Fatal("fake-down Stream must fail")
 	}
 }
+
+// cutStream reads the first delta, cancels like the teach engine does after its
+// sentence cap, and waits until the stream has fully ended.
+func cutStream(t *testing.T, l domain.LLM) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	ch, err := l.Stream(ctx, domain.LLMRequest{System: "s", Messages: []domain.Message{{Role: "user", Content: "hello there"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d := <-ch; d.Err != nil || d.Text == "" {
+		t.Fatalf("first delta %+v", d)
+	}
+	cancel()
+	for range ch {
+	}
+}
+
+// openStream sends events, then holds the response open until the client goes away.
+func openStream(events ...string) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		for _, e := range events {
+			fmt.Fprint(w, e)
+		}
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+	}))
+}
+
+func TestGeminiCanceledStreamIsMetered(t *testing.T) {
+	srv := openStream(`data: {"candidates":[{"content":{"role":"model","parts":[{"text":"Why does that. Happen. Again"}]}}],"usageMetadata":{"promptTokenCount":7,"candidatesTokenCount":3}}` + "\n\n")
+	defer srv.Close()
+	g, err := NewGemini(context.Background(), "k", "test-model", srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g.Retry, g.Meter = fast, &Meter{}
+	cutStream(t, g)
+	c := g.Meter.Calls()
+	if len(c) != 1 || !c[0].CutShort || c[0].In != 7 || c[0].Out != int64(g.MaxTokens) {
+		t.Fatalf("a canceled stream must be metered at the reply cap: %+v", c)
+	}
+}
+
+func TestAnthropicCanceledStreamIsMetered(t *testing.T) {
+	srv := openStream(
+		"event: x\ndata: "+`{"type":"message_start","message":{"id":"m","type":"message","role":"assistant","model":"x","content":[],"usage":{"input_tokens":7,"output_tokens":1}}}`+"\n\n",
+		"event: x\ndata: "+`{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`+"\n\n",
+		"event: x\ndata: "+`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Why. So. More"}}`+"\n\n",
+	)
+	defer srv.Close()
+	a := NewAnthropic("k", "test-model", srv.URL)
+	a.Retry, a.Meter = fast, &Meter{}
+	cutStream(t, a)
+	c := a.Meter.Calls()
+	if len(c) != 1 || !c[0].CutShort || c[0].In != 7 || c[0].Out != a.StreamMaxTokens {
+		t.Fatalf("a canceled stream must be metered at the reply cap: %+v", c)
+	}
+}
+
+func TestCutShortBoundsUnknownInput(t *testing.T) {
+	in, out := cutShort(0, 12, domain.LLMRequest{System: "abc", Messages: []domain.Message{{Content: "defgh"}}}, 200)
+	if in != 8 || out != 200 {
+		t.Fatalf("in %d out %d", in, out)
+	}
+	if in, out = cutShort(5, 300, domain.LLMRequest{}, 200); in != 5 || out != 300 {
+		t.Fatalf("known counts must be kept: in %d out %d", in, out)
+	}
+}

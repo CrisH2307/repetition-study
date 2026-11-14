@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/CrisH2307/repetition-study/internal/domain"
 )
 
 //go:embed models.json
@@ -77,6 +79,23 @@ type Call struct {
 	In, Out int64
 	Cost    float64
 	Latency time.Duration
+	// CutShort marks a stream that ended early (canceled or failed) after the
+	// vendor had started answering. Its usage is an upper bound, see cutShort.
+	CutShort bool
+}
+
+// cutShort bounds the usage of a stream that ended early. The vendor's final
+// usage never arrived, so output is billed at the reply cap, and input at the
+// request size in bytes when the vendor sent no input count (a token is never
+// shorter than one byte). It may overstate the cost; it never understates it.
+func cutShort(in, out int64, req domain.LLMRequest, maxOut int64) (int64, int64) {
+	if in == 0 {
+		in = int64(len(req.System))
+		for _, m := range req.Messages {
+			in += int64(len(m.Content))
+		}
+	}
+	return in, max(out, maxOut)
 }
 
 // ErrBudget is returned when a Meter's cap is reached.

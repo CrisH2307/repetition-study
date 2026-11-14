@@ -123,10 +123,22 @@ func (g *Gemini) Stream(ctx context.Context, req domain.LLMRequest) (<-chan doma
 	return streamRetry(ctx, g.Retry, func(actx context.Context, emit func(string) error) error {
 		start := time.Now()
 		var md *genai.GenerateContentResponseUsageMetadata
+		answered, done := false, false
+		// Meter every attempt the vendor answered, also one cut short by a
+		// cancel (the teach engine stops after 2 sentences) or an error.
+		defer func() {
+			if !answered || done {
+				return
+			}
+			in, o := usage(md)
+			in, o = cutShort(in, o, req, int64(g.MaxTokens)+int64(max(g.ThinkingBudget, 0)))
+			g.Meter.Record(Call{Model: model, In: in, Out: o, Latency: time.Since(start), CutShort: true})
+		}()
 		for resp, err := range g.client.Models.GenerateContentStream(actx, model, contents, cfg) {
 			if err != nil {
 				return err
 			}
+			answered = true
 			if resp.UsageMetadata != nil {
 				md = resp.UsageMetadata
 			}
@@ -136,6 +148,7 @@ func (g *Gemini) Stream(ctx context.Context, req domain.LLMRequest) (<-chan doma
 				}
 			}
 		}
+		done = true
 		in, o := usage(md)
 		g.Meter.Record(Call{Model: model, In: in, Out: o, Latency: time.Since(start)})
 		return nil

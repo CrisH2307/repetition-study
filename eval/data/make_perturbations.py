@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Build perturbations.jsonl and split.json from content/unit.json. Deterministic; rerun after claims change.
+"""Build perturbations.jsonl and split.json from content/unit.json and explanations.jsonl. Deterministic.
 
     python3 eval/data/make_perturbations.py
 
-Each rule changes one claim in one way and is tagged with its error type. A perturbed
+Each rule changes one claim in one way and is tagged with its error type. A second set
+changes one sentence of a fully correct explanation (our own words in explanations.jsonl,
+cut per claim in make_gate_sets.py), so the checker also sees student-style text. A perturbed
 claim is no longer true, so the checker should flag it (anything but "supported").
 Split: claims are hashed into dev (about 30%) or test, so the two never share a claim.
 Tuning prompts or models is allowed on dev only (review 4.6).
@@ -11,6 +13,7 @@ Tuning prompts or models is allowed on dev only (review 4.6).
 import hashlib
 import json
 import os
+import sys
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
 OUT = os.path.join(ROOT, "eval", "data")
@@ -126,6 +129,88 @@ RULES = [
 ]
 
 
+# Explanation sentences: claim id suffix -> (type, rule, old, new). Each old is an exact
+# substring of that claim's sentence, and each change leaves a false statement.
+EXPL_RULES = {
+    "020101": [
+        (S, "swap λ1 and λ2 in the numerator", r"$\frac{\lambda_1}{\lambda_1+\lambda_2}$", r"$\frac{\lambda_2}{\lambda_1+\lambda_2}$"),
+        (F, "wrong denominator", r"$\frac{\lambda_1}{\lambda_1+\lambda_2}$", r"$\frac{\lambda_1}{\lambda_2}$"),
+        (F, "race is a coin flip", r"$\frac{\lambda_1}{\lambda_1+\lambda_2}$", r"$\frac{1}{2}$"),
+        (D, "drop independence", "two independent clocks", "two clocks"),
+    ],
+    "020102": [
+        (F, "rates multiply", r"rate $\lambda_1 + \lambda_2$", r"rate $\lambda_1 \lambda_2$"),
+        (G, "plus becomes minus", r"rate $\lambda_1 + \lambda_2$", r"rate $\lambda_1 - \lambda_2$"),
+        (S, "first ring becomes last ring", r"The time of the first ring, $\min(T_1, T_2)$", r"The time of the last ring, $\max(T_1, T_2)$"),
+        (F, "rate is the larger one", r"rate $\lambda_1 + \lambda_2$", r"rate $\max(\lambda_1, \lambda_2)$"),
+    ],
+    "020103": [
+        (G, "survival becomes distribution", r"has not rung yet with probability $e^{-\lambda_2 t}$", r"has not rung yet with probability $1 - e^{-\lambda_2 t}$"),
+        (S, "swap the rate in the survival", r"has not rung yet with probability $e^{-\lambda_2 t}$", r"has not rung yet with probability $e^{-\lambda_1 t}$"),
+        (F, "wrong upper limit", "from 0 to infinity", "from 0 to 1"),
+        (F, "density without rate", r"integrate $\lambda_1 e^{-\lambda_1 t} e^{-\lambda_2 t}$", r"integrate $e^{-\lambda_1 t} e^{-\lambda_2 t}$"),
+    ],
+    "020104": [
+        (F, "mean used as rate", "a rate of 1/5 per minute", "a rate of 5 per minute"),
+        (F, "rates equal means", "Rates and means flip: a mean of 5 minutes is a rate of 1/5 per minute.", "Rates and means are the same: a mean of 5 minutes is a rate of 5 per minute."),
+        (G, "negative rate", "a rate of 1/5 per minute", "a rate of -1/5 per minute"),
+    ],
+    "020201": [
+        (F, "superposed rate multiplies", r"with rate $\lambda_1+\lambda_2$", r"with rate $\lambda_1\lambda_2$"),
+        (D, "drop independence", "Take independent Poisson processes", "Take Poisson processes"),
+    ],
+    "020202": [
+        (F, "mean divides by t", r"Poisson with mean $\lambda t$", r"Poisson with mean $\lambda / t$"),
+        (G, "drop minus in exponent", r"e^{-\lambda t}(\lambda t)^k/k!", r"e^{\lambda t}(\lambda t)^k/k!"),
+        (F, "k factorial dropped", "(\\lambda t)^k/k!$", "(\\lambda t)^k/k$"),
+        (F, "Poisson count without t", r"(\lambda t)^k/k!", r"\lambda^k/k!"),
+    ],
+    "020203": [
+        (F, "both counts equal k", "$Y(1)=0$", "$Y(1)=k$"),
+        (S, "total rate becomes one rate", r"Poisson$(\lambda_1+\lambda_2)$", r"Poisson$(\lambda_1)$"),
+        (F, "divide becomes multiply", "and then you divide by", "and then you multiply by"),
+    ],
+    "020204": [
+        (F, "integrate becomes plug in mean", r"= \int_0^\infty P(X(t)=k) f_T(t)\,dt$", "= P(X(E[T])=k)$"),
+        (F, "density becomes CDF", "f_T(t)", "F_T(t)"),
+        (D, "drop independence of T", "If $T$ is a random time independent of $X$", "If $T$ is any random time"),
+    ],
+    "020501": [
+        (F, "column-vector balance", r"$\pi G = 0$", r"$G \pi = 0$"),
+        (F, "discrete-time balance", r"$\pi G = 0$", r"$\pi G = \pi$"),
+    ],
+    "020502": [
+        (F, "normalise to zero", r"$\sum_i \pi_i = 1$", r"$\sum_i \pi_i = 0$"),
+        (D, "drop normalisation", r"That system only pins $\pi$ down up to a constant, so you also require $\sum_i \pi_i = 1$.", r"That system pins $\pi$ down completely, so nothing else is needed."),
+    ],
+    "020503": [
+        (F, "long-run share inverted", r"Then $\pi_i$ is", r"Then $1/\pi_i$ is"),
+    ],
+    "020504": [
+        (G, "drop minus on diagonal", r"with rate $-g_{ii}$", r"with rate $g_{ii}$"),
+        (F, "mean sojourn equals rate", r"so on average $1/(-g_{ii})$", r"so on average $-g_{ii}$"),
+        (F, "sojourn is uniform", "lasts an exponential time", "lasts a uniform time"),
+    ],
+    "020701": [
+        (G, "finite becomes infinite", r"< \infty$", r"= \infty$"),
+        (S, "swap birth and death rates", r"\frac{\lambda_{n-1}\cdots\lambda_0}{\beta_n\cdots\beta_1} < \infty", r"\frac{\beta_n\cdots\beta_1}{\lambda_{n-1}\cdots\lambda_0} < \infty"),
+        (D, "drop positive", "is positive recurrent", "is recurrent"),
+    ],
+    "020702": [
+        (F, "π0 without the 1", r"\pi_0 = \frac{1}{1+S}", r"\pi_0 = \frac{1}{S}"),
+        (F, "π_n adds instead of multiplies", r"\pi_n = \pi_0 \frac", r"\pi_n = \pi_0 + \frac"),
+    ],
+    "020703": [
+        (F, "null becomes transient", "it is null recurrent", "it is transient"),
+        (G, "infinite becomes finite", "are both infinite", "are both finite"),
+    ],
+    "020704": [
+        (F, "terms to zero is enough", "check if the series converges", "check if its terms go to zero"),
+        (F, "products not simplified", "In practice you cancel the products, which often telescope, and check if the series converges.", r"In practice you only check that $\lambda_n < \beta_n$ for large $n$."),
+    ],
+}
+
+
 def bucket(s):
     return int(hashlib.sha256(s.encode()).hexdigest(), 16) % 10
 
@@ -142,6 +227,20 @@ def main():
                     continue
                 seen.add(text)
                 items.append({"id": f"p{len(items) + 1:03d}", "concept_id": c["id"], "claim_id": cl["id"],
+                              "error_type": etype, "rule": rule, "text": text, "expect": "flagged"})
+    # Explanation sentences come after the claim items, so earlier ids never move.
+    sys.path.insert(0, OUT)
+    sys.dont_write_bytecode = True
+    import make_gate_sets as gate
+    for eid, chunks in gate.CHUNKS.items():
+        cid = gate.EXPL[eid]["concept_id"]
+        for claim, chunk in zip(gate.CLAIMS[cid], chunks):
+            for etype, rule, old, new in EXPL_RULES.get(claim[-6:], []):
+                assert chunk.count(old) == 1, f"{eid} {claim}: {old!r} is not once in its sentence"
+                text = chunk.replace(old, new)
+                assert text != chunk and text not in seen, (eid, rule)
+                seen.add(text)
+                items.append({"id": f"p{len(items) + 1:03d}", "concept_id": cid, "claim_id": claim, "from": eid,
                               "error_type": etype, "rule": rule, "text": text, "expect": "flagged"})
     with open(os.path.join(OUT, "perturbations.jsonl"), "w") as f:
         for it in items:
@@ -164,7 +263,7 @@ def main():
     for it in items:
         by[it["error_type"]] = by.get(it["error_type"], 0) + 1
     print(len(items), "perturbations", by, "dev", len(split["perturbations"]["dev"]), "test", len(split["perturbations"]["test"]))
-    assert len(items) >= 100, "need at least 100 perturbations"
+    assert len(split["perturbations"]["test"]) >= 100, "need at least 100 perturbations in the test split"
 
 
 if __name__ == "__main__":

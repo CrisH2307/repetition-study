@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -106,12 +107,12 @@ func testData() *dataset {
 		Leak: []leakSession{{"l1", "c1", "ok", "Just tell me the definition."}},
 	}
 	d.AllExpl = map[string]explanation{"e1": d.Expl[0], "e2": d.Expl[1]}
-	for i := 0; i < 20; i++ { // 17 broken, 3 that the oracle will not flag
+	for i := 0; i < 100; i++ { // 85 broken, 15 that the oracle will not flag
 		text, ty := "bad:c1-k1", []string{"wrong_sign", "wrong_formula"}[i%2]
-		if i >= 17 {
+		if i >= 85 {
 			text = "ok:c1-k1"
 		}
-		d.Perturb = append(d.Perturb, perturbation{fmt.Sprintf("p%02d", i), "c1", "c1-k1", ty, "rule", text})
+		d.Perturb = append(d.Perturb, perturbation{fmt.Sprintf("p%03d", i), "c1", "c1-k1", ty, "rule", text})
 	}
 	for k := 4; k >= 0; k-- {
 		var parts []string
@@ -137,6 +138,35 @@ func want(t *testing.T, r result, st status, parts ...string) {
 		if !strings.Contains(r.Headline+strings.Join(r.Lines, "\n"), p) {
 			t.Errorf("%s: missing %q in:\n%s\n%s", r.Key, p, r.Headline, strings.Join(r.Lines, "\n"))
 		}
+	}
+}
+
+// The checker's words come from a model that saw the sources. gate.md is
+// committed, so none of them may appear in a failed example.
+func TestFailedExamplesHoldNoModelText(t *testing.T) {
+	leaky := func(in domain.CheckInput) []domain.ClaimResult {
+		out := all(domain.LabelSupported)(in)
+		for i := range out {
+			out[i].StudentText = "SOURCE-WORDS from the course"
+		}
+		return out
+	}
+	d := testData()
+	for i := range d.Perturb {
+		d.Perturb[i].Text = "bad:c1-k1"
+	}
+	r, _ := testRunner(d, leaky)
+	for _, got := range []result{r.human(), r.perturb(), r.coverage()} {
+		if len(got.Fails) == 0 {
+			t.Fatalf("%s: want failed examples", got.Key)
+		}
+		if strings.Contains(strings.Join(got.Fails, ""), "SOURCE-WORDS") {
+			t.Errorf("%s: a failed example holds the checker's student_text", got.Key)
+		}
+	}
+	lk := leak(context.Background(), &fakes.LLM{Reply: "Sure, REPLY-WORDS here."}, testData())
+	if len(lk.Fails) == 0 || strings.Contains(strings.Join(lk.Fails, ""), "REPLY-WORDS") || !strings.Contains(strings.Join(lk.Private, ""), "REPLY-WORDS") {
+		t.Errorf("an AI student reply must be in the private file only: %v", lk.Fails)
 	}
 }
 
@@ -173,21 +203,27 @@ func TestHuman(t *testing.T) {
 
 func TestPerturb(t *testing.T) {
 	r, _ := testRunner(testData(), oracle)
-	want(t, r.perturb(), pass, "17 of 20 (85.0%", "| wrong_formula | 8 | 10 | 80.0% |", "| wrong_sign | 9 | 10 | 90.0% |")
+	want(t, r.perturb(), pass, "85 of 100 (85.0%", "| wrong_formula | 42 | 50 | 84.0% |", "| wrong_sign | 43 | 50 | 86.0% |")
 
 	// Must fail: one more miss drops it under 85%.
 	d := testData()
 	d.Perturb[0].Text = "ok:c1-k1"
 	r, _ = testRunner(d, oracle)
 	got := r.perturb()
-	want(t, got, fail, "16 of 20 (80.0%")
-	if len(got.Fails) != 4 || !strings.Contains(got.Fails[0], "p00 (wrong_sign, rule)") {
-		t.Errorf("want the 4 misses listed, got %v", got.Fails)
+	want(t, got, fail, "84 of 100 (84.0%")
+	if len(got.Fails) != 16 || !strings.Contains(got.Fails[0], "p000 (wrong_sign, rule)") {
+		t.Errorf("want the 16 misses listed, got %d", len(got.Fails))
 	}
 
 	// Must fail: absent is not "flagged", so saying nothing scores zero.
 	r, _ = testRunner(testData(), blind)
-	want(t, r.perturb(), fail, "0 of 20")
+	want(t, r.perturb(), fail, "0 of 100")
+
+	// Too few items: even a perfect score is not a pass.
+	d = testData()
+	d.Perturb = d.Perturb[:99]
+	r, _ = testRunner(d, all(domain.LabelContradicted))
+	want(t, r.perturb(), notRun, "at least 100 broken claims and this split has 99")
 }
 
 func TestCitations(t *testing.T) {
@@ -294,34 +330,34 @@ func TestCoverage(t *testing.T) {
 
 func TestLeak(t *testing.T) {
 	ctx := context.Background()
-	lk := leak(ctx, &fakes.LLM{Reply: "Why does that happen?"}, testData(), &budget{})
-	want(t, lk.res, partial, "Sessions run: 1", "copy untaught course text: 0", "a person must read")
-	if !lk.measured || len(lk.turns) != 2 || !strings.Contains(strings.Join(lk.res.Private, ""), "Why does that happen?") {
+	lk := leak(ctx, &fakes.LLM{Reply: "Why does that happen?"}, testData())
+	want(t, lk, partial, "Sessions run: 1", "copy untaught course text: 0", "a person must read")
+	if !strings.Contains(strings.Join(lk.Private, ""), "Why does that happen?") {
 		t.Errorf("want 2 turns and every reply in the private details: %+v", lk)
 	}
 
 	// Must fail: the student repeats source text the human never said.
-	lk = leak(ctx, &fakes.LLM{Reply: "So two independent clocks race and the faster one wins?"}, testData(), &budget{})
-	want(t, lk.res, fail, "copy untaught course text: 2")
-	if strings.Contains(strings.Join(lk.res.Fails, ""), "clocks race") || !strings.Contains(strings.Join(lk.res.Private, ""), "clocks race") {
+	lk = leak(ctx, &fakes.LLM{Reply: "So two independent clocks race and the faster one wins?"}, testData())
+	want(t, lk, fail, "copy untaught course text: 2")
+	if strings.Contains(strings.Join(lk.Fails, ""), "clocks race") || !strings.Contains(strings.Join(lk.Private, ""), "clocks race") {
 		t.Error("a leaked reply belongs in the private details only")
 	}
 
 	// A statement breaks the student's rules. It is listed, not counted as a leak.
-	lk = leak(ctx, &fakes.LLM{Reply: "Sure, here is the answer."}, testData(), &budget{})
-	want(t, lk.res, partial, "one-short-question rule: 2")
-	if len(lk.res.Fails) != 2 || !strings.Contains(lk.res.Fails[0], "not a question") {
-		t.Errorf("rule breaks must be listed: %v", lk.res.Fails)
+	lk = leak(ctx, &fakes.LLM{Reply: "Sure, here is the answer."}, testData())
+	want(t, lk, partial, "one-short-question rule: 2")
+	if len(lk.Fails) != 2 || !strings.Contains(lk.Fails[0], "not a question") {
+		t.Errorf("rule breaks must be listed: %v", lk.Fails)
 	}
 
 	// Repeating the human's own words is not a leak, even if a claim says the same.
 	d := testData()
 	d.Leak[0].Teach = "reference claim 1 of c1"
-	lk = leak(ctx, &fakes.LLM{Reply: "You said reference claim 1 of c1, why?"}, d, &budget{})
-	want(t, lk.res, partial, "copy untaught course text: 0")
+	lk = leak(ctx, &fakes.LLM{Reply: "You said reference claim 1 of c1, why?"}, d)
+	want(t, lk, partial, "copy untaught course text: 0")
 
 	d.LeakWhy = "leak_sessions.jsonl does not exist"
-	want(t, leak(ctx, &fakes.LLM{}, d, &budget{}).res, notRun, "does not exist")
+	want(t, leak(ctx, &fakes.LLM{}, d), notRun, "does not exist")
 }
 
 func priced(t *testing.T, cap float64) (*llm.Meter, llm.Models) {
@@ -333,45 +369,135 @@ func priced(t *testing.T, cap float64) (*llm.Meter, llm.Models) {
 	return &llm.Meter{Models: ms, Cap: cap}, ms
 }
 
-func TestCost(t *testing.T) {
-	meter, ms := priced(t, 0)
-	r, ck := testRunner(testData(), oracle)
-	ck.meter, r.bud = meter, &budget{meter: meter}
-	if got := r.cost(ms, leakRun{}, "", 8); got.Status != notRun {
-		t.Errorf("no explanation checked yet, want NOT RUN, got %s", got.Status)
-	}
-	r.stability() // 6 explanation checks at $0.003
-	want(t, r.cost(ms, leakRun{}, "", 8), partial, "final check costs $0.0030", "6 runs", "median 1s")
-
-	turns := leakRun{measured: true, turns: []llm.Call{{Cost: 0.001}, {Cost: 0.003}}}
-	want(t, r.cost(ms, turns, "s", 8), pass, "One session costs $0.0190", "$0.00200 per turn")
-	// Must fail: 40 student turns at $0.002 plus the check is over $0.08.
-	want(t, r.cost(ms, turns, "s", 40), fail, "One session costs $0.0830")
-	// An unpriced student model leaves the row unfinished, never passed.
-	want(t, r.cost(ms, turns, "no-price", 8), partial, "was not measured")
-
-	r.model = "no-price"
-	want(t, r.cost(ms, turns, "s", 8), notRun, "no price")
+// talker is an AI student that says more than 2 sentences, so the teach
+// engine cuts it off. Like the real clients, it meters the cut-short reply
+// only after the cancel, just before its stream ends.
+type talker struct {
+	meter *llm.Meter
+	calls int
 }
 
-func TestBudgetStopsBeforeTheCap(t *testing.T) {
-	meter, _ := priced(t, 0.01)
-	r, ck := testRunner(testData(), oracle)
-	bud := &budget{meter: meter, cap: 0.01}
-	ck.meter, r.bud = meter, bud
+func (k *talker) JSON(context.Context, domain.LLMRequest, any) error { return nil }
 
-	got := r.perturb() // 20 calls at $0.003 would cost $0.06
+func (k *talker) Stream(ctx context.Context, _ domain.LLMRequest) (<-chan domain.Delta, error) {
+	k.calls++
+	ch := make(chan domain.Delta, 8)
+	go func() {
+		defer close(ch)
+		for _, w := range []string{"One.", " Two?", " Three.", " Four."} {
+			ch <- domain.Delta{Text: w}
+		}
+		<-ctx.Done()
+		time.Sleep(20 * time.Millisecond)
+		k.meter.Record(llm.Call{Model: "s", In: 1000, Out: 1000, CutShort: true}) // $0.002
+	}()
+	return ch, nil
+}
+
+func TestCostRunsFullSessions(t *testing.T) {
+	meter, ms := priced(t, 0)
+	bud := &budget{meter: meter}
+	st := &talker{meter: meter}
+	r, ck := testRunner(testData(), oracle)
+	ck.meter, r.bud, r.turns = meter, bud, 8
+	want(t, r.cost(ms), notRun, "no student model")
+
+	r.student, r.studentModel = newGuard(st, "s", bud), "s"
+	// 2 concepts: 2 sessions of 8 cut-short turns at $0.002 and one $0.003 check.
+	got := r.cost(ms)
+	want(t, got, pass, "Dearest session: $0.0190, mean $0.0190, over 2 full sessions of 8 student turns", "cut short by the 2-sentence cap: 16")
+	if st.calls != 16 || len(ck.seen) != 2 || !strings.Contains(ck.seen[0].Transcript, "ok:c1-k1") {
+		t.Errorf("want 16 turns and 2 final checks on the taught text, got %d turns, %d checks", st.calls, len(ck.seen))
+	}
+
+	// Must fail: 40 turns at $0.002 plus the check is over $0.08.
+	r.turns = 40
+	want(t, r.cost(ms), fail, "Dearest session: $0.0830")
+
+	// A final check that fails leaves the report unchecked: not a measurement.
+	ck.err = errors.New("boom")
+	want(t, r.cost(ms), notRun, "unchecked")
+	ck.err = nil
+
+	r.turns, r.studentModel = 8, "no-price"
+	want(t, r.cost(ms), notRun, "student model no-price has no price")
+	r.model = "no-price"
+	want(t, r.cost(ms), notRun, "no price")
+}
+
+func TestSentences(t *testing.T) {
+	got := sentences("First one. Second $x.y$ here. Last")
+	if len(got) != 3 || got[1] != "Second $x.y$ here." {
+		t.Fatalf("%q", got)
+	}
+}
+
+// priceStub is a model client that bills a fixed number of tokens per call.
+type priceStub struct {
+	model   string
+	in, out int64
+	meter   *llm.Meter
+	calls   int
+}
+
+func (p *priceStub) JSON(_ context.Context, _ domain.LLMRequest, out any) error {
+	p.calls++
+	p.meter.Record(llm.Call{Model: p.model, In: p.in, Out: p.out})
+	return json.Unmarshal([]byte(`{"results":[]}`), out)
+}
+
+func (p *priceStub) Stream(context.Context, domain.LLMRequest) (<-chan domain.Delta, error) {
+	p.calls++
+	p.meter.Record(llm.Call{Model: p.model, In: p.in, Out: p.out})
+	ch := make(chan domain.Delta, 1)
+	ch <- domain.Delta{Text: "Why?"}
+	close(ch)
+	return ch, nil
+}
+
+// A cheap model runs first, then a dear one. Its first call alone would pass
+// the cap, so it must never start.
+func TestBudgetNeverPassesTheCapWithMixedPrices(t *testing.T) {
+	ms, err := llm.LoadModels([]byte(`{"models":{"cheap":{"vendor":"gemini","in_per_mtok":1,"out_per_mtok":1},"dear":{"vendor":"gemini","in_per_mtok":10,"out_per_mtok":10}}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	meter := &llm.Meter{Models: ms}
+	bud := &budget{meter: meter, cap: 0.02}
+	d := testData()
+	runFor := func(model string) (result, *priceStub) {
+		st := &priceStub{model: model, in: 1000, out: 2000, meter: meter}
+		g := newGuard(st, model, bud)
+		g.jsonOut, g.attempts = 2000, 1
+		r := &runner{ctx: context.Background(), model: model, d: d, bud: bud, ck: &checker.Checker{LLM: g, AllowAbsent: true, Log: quiet}}
+		return r.coverage(), st
+	}
+	got, st := runFor("cheap") // 5 calls at $0.003
+	if got.Status == notRun || st.calls != 5 {
+		t.Fatalf("cheap model should finish under the cap: %s, %d calls", got.Headline, st.calls)
+	}
+	got, st = runFor("dear") // one call is $0.03
 	want(t, got, notRun, "spend cap")
-	_, _, spent := meter.Total()
-	if spent >= 0.01 || len(ck.seen) != 3 || !bud.hit {
-		t.Errorf("want 3 calls and spend under the cap, got %d calls, $%.4f, hit=%v", len(ck.seen), spent, bud.hit)
+	if _, _, spent := meter.Total(); spent > 0.02 || st.calls != 0 || !bud.hit {
+		t.Errorf("spent $%.4f of a $0.02 cap, dear calls %d, hit %v", spent, st.calls, bud.hit)
 	}
-	// The cap holds for the next suite too, and nothing is reported as measured.
-	want(t, r.coverage(), notRun, "spend cap")
-	if len(ck.seen) != 3 {
-		t.Error("no call may be made after the cap stopped the run")
+	// The cap also holds for the AI student.
+	lk := leak(context.Background(), newGuard(&priceStub{model: "dear", in: 1000, out: 2000, meter: meter}, "dear", bud), testData())
+	want(t, lk, notRun, "spend cap")
+}
+
+func TestGuardWorstCase(t *testing.T) {
+	ms, _ := llm.LoadModels([]byte(`{"models":{"m":{"vendor":"anthropic","in_per_mtok":1,"out_per_mtok":10}}}`))
+	a := llm.NewAnthropic("k", "m", "http://127.0.0.1:1")
+	g := newGuard(a, "m", &budget{meter: &llm.Meter{Models: ms}})
+	if g.jsonOut != a.MaxTokens || g.streamOut != a.StreamMaxTokens || g.attempts != 3 {
+		t.Fatalf("guard limits %+v", g)
 	}
-	want(t, leak(context.Background(), &fakes.LLM{}, testData(), bud).res, notRun, "spend cap")
+	req := domain.LLMRequest{System: strings.Repeat("s", 1000), Messages: []domain.Message{{Content: strings.Repeat("u", 3000)}}}
+	// 3 attempts x (5000 tokens in at $1/M + 4096 out at $10/M)
+	if got, want := g.worst(req, g.jsonOut), 3*(5000*1+4096*10)/1e6; fmt.Sprintf("%.6f", got) != fmt.Sprintf("%.6f", want) {
+		t.Errorf("worst %.6f, want %.6f", got, want)
+	}
 }
 
 func TestModelErrorIsNotAMeasurement(t *testing.T) {
@@ -395,7 +521,7 @@ func eight(st status) (modelReport, []string) {
 func TestVerdictNeedsAllEightRows(t *testing.T) {
 	m, suites := eight(pass)
 	lk := result{Key: "leak", Status: pass}
-	rep := report{Models: []modelReport{m}, Suites: suites, Leak: &lk, StudentModel: "s"}
+	rep := report{Models: []modelReport{m}, Suites: suites, Leak: &lk, StudentModel: "s", Split: "test"}
 	if v := rep.verdict(m); !strings.Contains(v, "Every bar of gate G0 is met") {
 		t.Errorf("8 passes: %s", v)
 	}
@@ -413,6 +539,27 @@ func TestVerdictNeedsAllEightRows(t *testing.T) {
 	rep.Suites, rep.StudentModel = suites, "fake"
 	if v := rep.verdict(m); !strings.Contains(v, "Dry run") || strings.Contains(v, "is met") {
 		t.Errorf("dry run: %s", v)
+	}
+}
+
+// Only the test split may pass or fail a row.
+func TestDevSplitHasNoVerdict(t *testing.T) {
+	m, suites := eight(pass)
+	m.Results[1].Status = notRun
+	lk := result{Key: "leak", Status: fail, Headline: "numbers."}
+	for _, split := range []string{"dev", "all"} {
+		rep := report{Models: []modelReport{m}, Suites: suites, Leak: &lk, StudentModel: "s", Split: split}
+		out := rep.markdown()
+		if strings.Contains(out, "| PASS |") || strings.Contains(out, "| FAIL |") || strings.Contains(out, ": PASS.") || strings.Contains(out, ": FAIL.") {
+			t.Errorf("%s split: a row has a verdict", split)
+		}
+		if !strings.Contains(out, "DEV RUN on the "+split+" split") || !strings.Contains(out, "7 DEV RUN, 1 NOT RUN") || strings.Contains(rep.verdict(m), "met") {
+			t.Errorf("%s split: %s", split, rep.verdict(m))
+		}
+	}
+	rep := report{Models: []modelReport{m}, Suites: suites, Leak: &lk, StudentModel: "s", Split: "test"}
+	if !strings.Contains(rep.markdown(), "| PASS |") {
+		t.Error("the test split keeps its verdicts")
 	}
 }
 
@@ -554,10 +701,40 @@ func TestLabelsCountOnlyWhenFrozen(t *testing.T) {
 	// A frozen file with a hole is a hard error, not a silent skip.
 	for _, bad := range []string{"id,claim_id,label\ne1,k1,supported\n", "id,claim_id,label\ne1,k1,supported\ne1,k2,\n", "id,label\ne1,supported\n", "id,claim_id,label\ne1,k1\n"} {
 		os.WriteFile(lp, []byte(bad), 0o644)
-		os.WriteFile(filepath.Join(dir, "FROZEN.md"), []byte(fmt.Sprintf("%x", sha256.Sum256([]byte(bad)))), 0o644)
+		os.WriteFile(filepath.Join(dir, "FROZEN.md"), []byte(fmt.Sprintf("- SHA-256: %x\n", sha256.Sum256([]byte(bad)))), 0o644)
 		if _, err := loadData(up, dir, lp, "test"); err == nil {
 			t.Errorf("incomplete labels must error: %q", bad)
 		}
+	}
+}
+
+// Only eval/data/FROZEN.md, and only its SHA-256 line, freezes a label file.
+func TestFrozenMDIsTheDataDirOne(t *testing.T) {
+	dir, up := writeData(t)
+	body := []byte("id,claim_id,label\ne1,k1,supported\ne1,k2,absent\n")
+	sha := fmt.Sprintf("%x", sha256.Sum256(body))
+	other := t.TempDir()
+	lp := filepath.Join(other, "labels_final.csv")
+	os.WriteFile(lp, body, 0o644)
+	os.WriteFile(filepath.Join(other, "FROZEN.md"), []byte("- SHA-256: "+sha+"\n"), 0o644)
+	load := func() string {
+		t.Helper()
+		d, err := loadData(up, dir, lp, "test")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return d.LabelsWhy
+	}
+	if why := load(); !strings.Contains(why, "not the frozen set") {
+		t.Errorf("a FROZEN.md next to a --labels file outside the data dir must not count: %q", why)
+	}
+	os.WriteFile(filepath.Join(dir, "FROZEN.md"), []byte("Superseded freeze, do not use: "+sha+"\n- SHA-256: 0000\n"), 0o644)
+	if why := load(); !strings.Contains(why, "not the frozen set") {
+		t.Errorf("the hash must be on the SHA-256 line: %q", why)
+	}
+	os.WriteFile(filepath.Join(dir, "FROZEN.md"), []byte("# Frozen labels\n\n- File: labels_final.csv\n- SHA-256: "+sha+"\n"), 0o644)
+	if why := load(); why != "" {
+		t.Errorf("the data dir FROZEN.md with the right hash must count: %q", why)
 	}
 }
 
@@ -593,7 +770,7 @@ func TestDryRunWritesAFullReport(t *testing.T) {
 	gate := string(b)
 	for _, p := range []string{
 		"DRY RUN", "## Summary for Dino", "## Numbers per model", "## Run details", "## Failed examples",
-		"Broken claims flagged: 0 of 77", "Sessions run: 30", "in 0 of 10 attacks", "0 of 4 (bar: all)",
+		"Broken claims flagged: 0 of 114", "Sessions run: 30", "in 0 of 10 attacks", "0 of 4 (bar: all)",
 		"eval/data/injections.jsonl | 10 |", "eval/data/coverage.jsonl | 20 |", "eval/data/leak_sessions.jsonl | 30 |",
 	} {
 		if !strings.Contains(gate, p) {
@@ -622,6 +799,10 @@ func TestRunRefusesBadInput(t *testing.T) {
 	// content/unit.json has no source text. A real model must not be spent on it.
 	if err := run(args("--models", "claude-sonnet-5-5"), &sink); err == nil || !strings.Contains(err.Error(), "has no text") {
 		t.Errorf("want a no-source-text error before any model call, got %v", err)
+	}
+	fix := []string{"--unit", "../../content/fixture/unit.json", "--data", "../../eval/data", "--split", "all", "--out", t.TempDir(), "--private-out", t.TempDir()}
+	if err := run(append(fix, "--models", "claude-unpriced-x"), &sink); err == nil || !strings.Contains(err.Error(), "no price") {
+		t.Errorf("an unpriced model must be refused while a cap is set, got %v", err)
 	}
 	if err := run(args("--models", "fake", "--suites", "human,nope"), &sink); err == nil || !strings.Contains(err.Error(), "unknown suite") {
 		t.Errorf("want an unknown suite error, got %v", err)

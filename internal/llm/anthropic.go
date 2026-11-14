@@ -112,7 +112,17 @@ func (a *Anthropic) Stream(ctx context.Context, req domain.LLMRequest) (<-chan d
 		stream := a.client.Messages.NewStreaming(actx, params)
 		defer stream.Close()
 		var acc anthropic.Message
+		answered, done := false, false
+		// Meter every attempt the vendor answered, also one cut short by a
+		// cancel (the teach engine stops after 2 sentences) or an error.
+		defer func() {
+			if answered && !done {
+				in, o := cutShort(acc.Usage.InputTokens, acc.Usage.OutputTokens, req, a.StreamMaxTokens)
+				a.Meter.Record(Call{Model: model, In: in, Out: o, Latency: time.Since(start), CutShort: true})
+			}
+		}()
 		for stream.Next() {
+			answered = true
 			ev := stream.Current()
 			if err := acc.Accumulate(ev); err != nil {
 				return errNoRetry{err}
@@ -128,6 +138,7 @@ func (a *Anthropic) Stream(ctx context.Context, req domain.LLMRequest) (<-chan d
 		if err := stream.Err(); err != nil {
 			return err
 		}
+		done = true
 		a.Meter.Record(Call{Model: model, In: acc.Usage.InputTokens, Out: acc.Usage.OutputTokens, Latency: time.Since(start)})
 		return nil
 	}), nil
