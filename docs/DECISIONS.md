@@ -24,6 +24,7 @@ One log. Newest change at the top of each row. On 2026-11-09 Cris and Dino appro
 | D18 | Capacity: hours per week each of Cris and Dino can give through January. | Open |
 | D19 | Self-grade step before the report: always on. | Approved |
 | D20 | Course claims: rewrite as definitions, statements, conditions and methods, with Dino. Worked numeric answers are not teach-back targets. | Approved |
+| D21 | Real model calls go through OpenRouter (one key, one prepaid balance as the hard limit). Same roles: Claude checker, Gemini student. Ids with the `openrouter/` prefix route there; bare `claude-*` and `gemini-*` ids still mean the direct APIs. | Approved |
 
 ## Record of changes to earlier decisions
 

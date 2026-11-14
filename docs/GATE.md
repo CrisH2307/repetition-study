@@ -15,6 +15,16 @@ This is the exact run for the gate in `docs/PLAN.md`. It spends real money, so d
 | `ANTHROPIC_API_KEY` | the checker |
 | `CHECKER_MODEL` | the checker model id, for example `claude-sonnet-5-5` |
 
+To use OpenRouter instead (Cris's choice, D21), set these and leave the four above out. The prepaid balance is the hard limit, and `--max-cost` still applies:
+
+| Name | Value |
+| --- | --- |
+| `OPENROUTER_API_KEY` | your OpenRouter key |
+| `STUDENT_MODEL` | `openrouter/google/gemini-3.8-flash` |
+| `CHECKER_MODEL` | `openrouter/anthropic/claude-sonnet-5.5` |
+
+Both ids are priced in `models.json` (prices from OpenRouter's public model list, 2026-11-14). The command in section 3 is unchanged. Not run against the live OpenRouter API, so unverified.
+
 `evalcheck` reads these from the shell environment and does not read `.env` itself (`make` does). Load the file first:
 
 ```bash

@@ -52,6 +52,14 @@ func New(ctx context.Context, model string, meter *Meter) (domain.LLM, error) {
 		a := NewAnthropic(key, model, "")
 		a.Meter = meter
 		return a, nil
+	case "openrouter":
+		key := os.Getenv("OPENROUTER_API_KEY")
+		if key == "" {
+			return nil, fmt.Errorf("llm: OPENROUTER_API_KEY is not set")
+		}
+		o := NewOpenRouter(key, model, "")
+		o.Meter = meter
+		return o, nil
 	}
 	return nil, fmt.Errorf("llm: vendor %q for model %q is not supported", v, model)
 }
