@@ -164,6 +164,17 @@
       "rpi/P0-GATE/"
     ]
   },
+  "P0-GATEPREP": {
+    "branch": "feature/gate-prep",
+    "allow": [
+      "cmd/evalcheck/",
+      "eval/data/make_gate_sets.py",
+      "eval/data/injections.jsonl",
+      "eval/data/coverage.jsonl",
+      "eval/data/leak_sessions.jsonl",
+      "rpi/P0-GATEPREP/"
+    ]
+  },
   "P0-SLICE": {
     "branch": "feature/dogfood-page",
     "allow": [
