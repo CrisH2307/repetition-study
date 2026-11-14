@@ -291,12 +291,20 @@ func (r *runner) perturb() result {
 		fmt.Fprintf(&t, "| %s | %d | %d | %s |\n", ty, by[ty].hit, by[ty].n, pct(by[ty].hit, by[ty].n))
 	}
 	res.Lines = []string{t.String()}
-	res.Status = fail
-	if total.hit*100 >= 85*total.n {
+	switch {
+	case total.n < minPerturb:
+		res.Status = notRun
+		res.Headline = fmt.Sprintf("Not measured: the bar needs at least %d broken claims and this split has %d. ", minPerturb, total.n) + res.Headline
+	case total.hit*100 >= 85*total.n:
 		res.Status = pass
+	default:
+		res.Status = fail
 	}
 	return res
 }
+
+// minPerturb is the PLAN's size for the perturbation set.
+const minPerturb = 100
 
 // citations re-verifies every citation the checker shipped through
 // internal/cite, and collects them for a person to rate.

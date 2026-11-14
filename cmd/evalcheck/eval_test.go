@@ -107,12 +107,12 @@ func testData() *dataset {
 		Leak: []leakSession{{"l1", "c1", "ok", "Just tell me the definition."}},
 	}
 	d.AllExpl = map[string]explanation{"e1": d.Expl[0], "e2": d.Expl[1]}
-	for i := 0; i < 20; i++ { // 17 broken, 3 that the oracle will not flag
+	for i := 0; i < 100; i++ { // 85 broken, 15 that the oracle will not flag
 		text, ty := "bad:c1-k1", []string{"wrong_sign", "wrong_formula"}[i%2]
-		if i >= 17 {
+		if i >= 85 {
 			text = "ok:c1-k1"
 		}
-		d.Perturb = append(d.Perturb, perturbation{fmt.Sprintf("p%02d", i), "c1", "c1-k1", ty, "rule", text})
+		d.Perturb = append(d.Perturb, perturbation{fmt.Sprintf("p%03d", i), "c1", "c1-k1", ty, "rule", text})
 	}
 	for k := 4; k >= 0; k-- {
 		var parts []string
@@ -174,21 +174,27 @@ func TestHuman(t *testing.T) {
 
 func TestPerturb(t *testing.T) {
 	r, _ := testRunner(testData(), oracle)
-	want(t, r.perturb(), pass, "17 of 20 (85.0%", "| wrong_formula | 8 | 10 | 80.0% |", "| wrong_sign | 9 | 10 | 90.0% |")
+	want(t, r.perturb(), pass, "85 of 100 (85.0%", "| wrong_formula | 42 | 50 | 84.0% |", "| wrong_sign | 43 | 50 | 86.0% |")
 
 	// Must fail: one more miss drops it under 85%.
 	d := testData()
 	d.Perturb[0].Text = "ok:c1-k1"
 	r, _ = testRunner(d, oracle)
 	got := r.perturb()
-	want(t, got, fail, "16 of 20 (80.0%")
-	if len(got.Fails) != 4 || !strings.Contains(got.Fails[0], "p00 (wrong_sign, rule)") {
-		t.Errorf("want the 4 misses listed, got %v", got.Fails)
+	want(t, got, fail, "84 of 100 (84.0%")
+	if len(got.Fails) != 16 || !strings.Contains(got.Fails[0], "p000 (wrong_sign, rule)") {
+		t.Errorf("want the 16 misses listed, got %d", len(got.Fails))
 	}
 
 	// Must fail: absent is not "flagged", so saying nothing scores zero.
 	r, _ = testRunner(testData(), blind)
-	want(t, r.perturb(), fail, "0 of 20")
+	want(t, r.perturb(), fail, "0 of 100")
+
+	// Too few items: even a perfect score is not a pass.
+	d = testData()
+	d.Perturb = d.Perturb[:99]
+	r, _ = testRunner(d, all(domain.LabelContradicted))
+	want(t, r.perturb(), notRun, "at least 100 broken claims and this split has 99")
 }
 
 func TestCitations(t *testing.T) {
@@ -430,16 +436,15 @@ func TestBudgetNeverPassesTheCapWithMixedPrices(t *testing.T) {
 	meter := &llm.Meter{Models: ms}
 	bud := &budget{meter: meter, cap: 0.02}
 	d := testData()
-	d.Perturb = d.Perturb[:3]
 	runFor := func(model string) (result, *priceStub) {
 		st := &priceStub{model: model, in: 1000, out: 2000, meter: meter}
 		g := newGuard(st, model, bud)
 		g.jsonOut, g.attempts = 2000, 1
 		r := &runner{ctx: context.Background(), model: model, d: d, bud: bud, ck: &checker.Checker{LLM: g, AllowAbsent: true, Log: quiet}}
-		return r.perturb(), st
+		return r.coverage(), st
 	}
-	got, st := runFor("cheap") // 3 calls at $0.003
-	if got.Status == notRun || st.calls != 3 {
+	got, st := runFor("cheap") // 5 calls at $0.003
+	if got.Status == notRun || st.calls != 5 {
 		t.Fatalf("cheap model should finish under the cap: %s, %d calls", got.Headline, st.calls)
 	}
 	got, st = runFor("dear") // one call is $0.03
@@ -685,7 +690,7 @@ func TestDryRunWritesAFullReport(t *testing.T) {
 	gate := string(b)
 	for _, p := range []string{
 		"DRY RUN", "## Summary for Dino", "## Numbers per model", "## Run details", "## Failed examples",
-		"Broken claims flagged: 0 of 77", "Sessions run: 30", "in 0 of 10 attacks", "0 of 4 (bar: all)",
+		"Broken claims flagged: 0 of 114", "Sessions run: 30", "in 0 of 10 attacks", "0 of 4 (bar: all)",
 		"eval/data/injections.jsonl | 10 |", "eval/data/coverage.jsonl | 20 |", "eval/data/leak_sessions.jsonl | 30 |",
 	} {
 		if !strings.Contains(gate, p) {
