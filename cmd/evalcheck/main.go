@@ -66,6 +66,13 @@ func run(args []string, stdout io.Writer) error {
 	if len(ms) == 0 && !(on("leak") && *student != "") {
 		return errors.New("nothing to run: give --models, or --student-model with the leak suite")
 	}
+	offline := func(m string) bool { return m == "" || m == "fake" || m == "fake-down" }
+	all := slices.Concat(ms, []string{*student})
+	for _, m := range all {
+		if *maxCost > 0 && !offline(m) && !llm.DefaultModels().Priced(m) {
+			return fmt.Errorf("%s has no price in internal/llm/models.json, so the spend cap cannot hold. Add a verified price, or pass --max-cost 0 to run with no cap", m)
+		}
+	}
 	if *lblPath == "" {
 		*lblPath = filepath.Join(*dataDir, "labels_final.csv")
 	}
@@ -78,7 +85,7 @@ func run(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	real := slices.ContainsFunc(slices.Concat(ms, []string{*student}), func(m string) bool { return m != "" && m != "fake" })
+	real := slices.ContainsFunc(all, func(m string) bool { return !offline(m) })
 	for _, s := range d.Unit.Sources {
 		if real && strings.TrimSpace(s.Text) == "" {
 			return fmt.Errorf("source %q in %s has no text: a real model needs the real unit (content/private/unit.json)", s.ID, up)
@@ -110,7 +117,7 @@ func run(args []string, stdout io.Writer) error {
 				return err
 			}
 			fmt.Fprintf(stdout, "leak suite, student model %s...\n", *student)
-			lk = leak(ctx, sl, d, bud)
+			lk = leak(ctx, newGuard(sl, *student, bud), d, bud)
 		}
 		rep.Leak = &lk.res
 	}
@@ -122,7 +129,7 @@ func run(args []string, stdout io.Writer) error {
 			return err
 		}
 		r := &runner{ctx: ctx, model: m, d: d, bud: bud,
-			ck: &checker.Checker{LLM: l, Model: m, AllowAbsent: true, Log: quiet}}
+			ck: &checker.Checker{LLM: newGuard(l, m, bud), Model: m, AllowAbsent: true, Log: quiet}}
 		mr := modelReport{Model: m}
 		steps := []struct {
 			key string

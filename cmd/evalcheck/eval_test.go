@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -354,24 +355,73 @@ func TestCost(t *testing.T) {
 	want(t, r.cost(ms, turns, "s", 8), notRun, "no price")
 }
 
-func TestBudgetStopsBeforeTheCap(t *testing.T) {
-	meter, _ := priced(t, 0.01)
-	r, ck := testRunner(testData(), oracle)
-	bud := &budget{meter: meter, cap: 0.01}
-	ck.meter, r.bud = meter, bud
+// priceStub is a model client that bills a fixed number of tokens per call.
+type priceStub struct {
+	model   string
+	in, out int64
+	meter   *llm.Meter
+	calls   int
+}
 
-	got := r.perturb() // 20 calls at $0.003 would cost $0.06
+func (p *priceStub) JSON(_ context.Context, _ domain.LLMRequest, out any) error {
+	p.calls++
+	p.meter.Record(llm.Call{Model: p.model, In: p.in, Out: p.out})
+	return json.Unmarshal([]byte(`{"results":[]}`), out)
+}
+
+func (p *priceStub) Stream(context.Context, domain.LLMRequest) (<-chan domain.Delta, error) {
+	p.calls++
+	p.meter.Record(llm.Call{Model: p.model, In: p.in, Out: p.out})
+	ch := make(chan domain.Delta, 1)
+	ch <- domain.Delta{Text: "Why?"}
+	close(ch)
+	return ch, nil
+}
+
+// A cheap model runs first, then a dear one. Its first call alone would pass
+// the cap, so it must never start.
+func TestBudgetNeverPassesTheCapWithMixedPrices(t *testing.T) {
+	ms, err := llm.LoadModels([]byte(`{"models":{"cheap":{"vendor":"gemini","in_per_mtok":1,"out_per_mtok":1},"dear":{"vendor":"gemini","in_per_mtok":10,"out_per_mtok":10}}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	meter := &llm.Meter{Models: ms}
+	bud := &budget{meter: meter, cap: 0.02}
+	d := testData()
+	d.Perturb = d.Perturb[:3]
+	runFor := func(model string) (result, *priceStub) {
+		st := &priceStub{model: model, in: 1000, out: 2000, meter: meter}
+		g := newGuard(st, model, bud)
+		g.jsonOut, g.attempts = 2000, 1
+		r := &runner{ctx: context.Background(), model: model, d: d, bud: bud, ck: &checker.Checker{LLM: g, AllowAbsent: true, Log: quiet}}
+		return r.perturb(), st
+	}
+	got, st := runFor("cheap") // 3 calls at $0.003
+	if got.Status == notRun || st.calls != 3 {
+		t.Fatalf("cheap model should finish under the cap: %s, %d calls", got.Headline, st.calls)
+	}
+	got, st = runFor("dear") // one call is $0.03
 	want(t, got, notRun, "spend cap")
-	_, _, spent := meter.Total()
-	if spent >= 0.01 || len(ck.seen) != 3 || !bud.hit {
-		t.Errorf("want 3 calls and spend under the cap, got %d calls, $%.4f, hit=%v", len(ck.seen), spent, bud.hit)
+	if _, _, spent := meter.Total(); spent > 0.02 || st.calls != 0 || !bud.hit {
+		t.Errorf("spent $%.4f of a $0.02 cap, dear calls %d, hit %v", spent, st.calls, bud.hit)
 	}
-	// The cap holds for the next suite too, and nothing is reported as measured.
-	want(t, r.coverage(), notRun, "spend cap")
-	if len(ck.seen) != 3 {
-		t.Error("no call may be made after the cap stopped the run")
+	// The cap also holds for the AI student.
+	lk := leak(context.Background(), newGuard(&priceStub{model: "dear", in: 1000, out: 2000, meter: meter}, "dear", bud), testData(), bud)
+	want(t, lk.res, notRun, "spend cap")
+}
+
+func TestGuardWorstCase(t *testing.T) {
+	ms, _ := llm.LoadModels([]byte(`{"models":{"m":{"vendor":"anthropic","in_per_mtok":1,"out_per_mtok":10}}}`))
+	a := llm.NewAnthropic("k", "m", "http://127.0.0.1:1")
+	g := newGuard(a, "m", &budget{meter: &llm.Meter{Models: ms}})
+	if g.jsonOut != a.MaxTokens || g.streamOut != a.StreamMaxTokens || g.attempts != 3 {
+		t.Fatalf("guard limits %+v", g)
 	}
-	want(t, leak(context.Background(), &fakes.LLM{}, testData(), bud).res, notRun, "spend cap")
+	req := domain.LLMRequest{System: strings.Repeat("s", 1000), Messages: []domain.Message{{Content: strings.Repeat("u", 3000)}}}
+	// 3 attempts x (5000 tokens in at $1/M + 4096 out at $10/M)
+	if got, want := g.worst(req, g.jsonOut), 3*(5000*1+4096*10)/1e6; fmt.Sprintf("%.6f", got) != fmt.Sprintf("%.6f", want) {
+		t.Errorf("worst %.6f, want %.6f", got, want)
+	}
 }
 
 func TestModelErrorIsNotAMeasurement(t *testing.T) {
@@ -622,6 +672,10 @@ func TestRunRefusesBadInput(t *testing.T) {
 	// content/unit.json has no source text. A real model must not be spent on it.
 	if err := run(args("--models", "claude-sonnet-5-5"), &sink); err == nil || !strings.Contains(err.Error(), "has no text") {
 		t.Errorf("want a no-source-text error before any model call, got %v", err)
+	}
+	fix := []string{"--unit", "../../content/fixture/unit.json", "--data", "../../eval/data", "--split", "all", "--out", t.TempDir(), "--private-out", t.TempDir()}
+	if err := run(append(fix, "--models", "claude-unpriced-x"), &sink); err == nil || !strings.Contains(err.Error(), "no price") {
+		t.Errorf("an unpriced model must be refused while a cap is set, got %v", err)
 	}
 	if err := run(args("--models", "fake", "--suites", "human,nope"), &sink); err == nil || !strings.Contains(err.Error(), "unknown suite") {
 		t.Errorf("want an unknown suite error, got %v", err)

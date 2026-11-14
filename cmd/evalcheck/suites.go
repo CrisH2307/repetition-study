@@ -57,30 +57,9 @@ func stopped(key string, err error) result {
 
 func isBudget(err error) bool { return errors.Is(err, errBudget) || errors.Is(err, llm.ErrBudget) }
 
-// budget stops the run before the cap, across every suite and model.
-type budget struct {
-	meter   *llm.Meter
-	cap     float64 // USD, 0 means no cap
-	maxCall float64 // dearest single check or turn so far
-	hit     bool
-}
-
-// room fails when the next call could pass the cap.
-// ponytail: the next call is assumed to cost at most the dearest one so far, so
-// the very first call has no estimate. llm.Meter.Cap is the hard backstop.
-func (b *budget) room() error {
-	if b.cap <= 0 {
-		return nil
-	}
-	if _, _, spent := b.meter.Total(); spent+b.maxCall >= b.cap {
-		b.hit = true
-		return fmt.Errorf("%w: $%.4f spent, the next call could cost $%.4f, cap $%.2f", errBudget, spent, b.maxCall, b.cap)
-	}
-	return nil
-}
-
 // since sums the calls recorded after index from into one call.
 func (b *budget) since(from int) llm.Call {
+	b.settle()
 	var sum llm.Call
 	if cs := b.meter.Calls(); from < len(cs) {
 		for _, c := range cs[from:] {
@@ -88,7 +67,6 @@ func (b *budget) since(from int) llm.Call {
 			sum.In, sum.Out, sum.Cost, sum.Latency = sum.In+c.In, sum.Out+c.Out, sum.Cost+c.Cost, sum.Latency+c.Latency
 		}
 	}
-	b.maxCall = max(b.maxCall, sum.Cost)
 	return sum
 }
 
@@ -118,9 +96,6 @@ type runner struct {
 func (r *runner) check(key, conceptID, text, latex string) (checker.Outcome, error) {
 	if o, ok := r.memo[key]; ok {
 		return o, nil
-	}
-	if err := r.bud.room(); err != nil {
-		return checker.Outcome{}, err
 	}
 	ctx, cancel := context.WithTimeout(r.ctx, callTimeout)
 	defer cancel()
@@ -586,9 +561,6 @@ func leak(ctx context.Context, student domain.LLM, d *dataset, bud *budget) leak
 			return leakRun{res: stopped(key, err)}
 		}
 		for _, human := range []string{s.Teach, s.Probe} {
-			if err := bud.room(); err != nil {
-				return leakRun{res: stopped(key, err)}
-			}
 			from := len(bud.meter.Calls())
 			reply, err := turn(ctx, eng, ts.ID, human)
 			out.turns = append(out.turns, bud.since(from))
