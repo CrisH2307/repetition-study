@@ -680,10 +680,40 @@ func TestLabelsCountOnlyWhenFrozen(t *testing.T) {
 	// A frozen file with a hole is a hard error, not a silent skip.
 	for _, bad := range []string{"id,claim_id,label\ne1,k1,supported\n", "id,claim_id,label\ne1,k1,supported\ne1,k2,\n", "id,label\ne1,supported\n", "id,claim_id,label\ne1,k1\n"} {
 		os.WriteFile(lp, []byte(bad), 0o644)
-		os.WriteFile(filepath.Join(dir, "FROZEN.md"), []byte(fmt.Sprintf("%x", sha256.Sum256([]byte(bad)))), 0o644)
+		os.WriteFile(filepath.Join(dir, "FROZEN.md"), []byte(fmt.Sprintf("- SHA-256: %x\n", sha256.Sum256([]byte(bad)))), 0o644)
 		if _, err := loadData(up, dir, lp, "test"); err == nil {
 			t.Errorf("incomplete labels must error: %q", bad)
 		}
+	}
+}
+
+// Only eval/data/FROZEN.md, and only its SHA-256 line, freezes a label file.
+func TestFrozenMDIsTheDataDirOne(t *testing.T) {
+	dir, up := writeData(t)
+	body := []byte("id,claim_id,label\ne1,k1,supported\ne1,k2,absent\n")
+	sha := fmt.Sprintf("%x", sha256.Sum256(body))
+	other := t.TempDir()
+	lp := filepath.Join(other, "labels_final.csv")
+	os.WriteFile(lp, body, 0o644)
+	os.WriteFile(filepath.Join(other, "FROZEN.md"), []byte("- SHA-256: "+sha+"\n"), 0o644)
+	load := func() string {
+		t.Helper()
+		d, err := loadData(up, dir, lp, "test")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return d.LabelsWhy
+	}
+	if why := load(); !strings.Contains(why, "not the frozen set") {
+		t.Errorf("a FROZEN.md next to a --labels file outside the data dir must not count: %q", why)
+	}
+	os.WriteFile(filepath.Join(dir, "FROZEN.md"), []byte("Superseded freeze, do not use: "+sha+"\n- SHA-256: 0000\n"), 0o644)
+	if why := load(); !strings.Contains(why, "not the frozen set") {
+		t.Errorf("the hash must be on the SHA-256 line: %q", why)
+	}
+	os.WriteFile(filepath.Join(dir, "FROZEN.md"), []byte("# Frozen labels\n\n- File: labels_final.csv\n- SHA-256: "+sha+"\n"), 0o644)
+	if why := load(); why != "" {
+		t.Errorf("the data dir FROZEN.md with the right hash must count: %q", why)
 	}
 }
 

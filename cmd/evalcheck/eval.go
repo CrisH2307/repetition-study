@@ -215,7 +215,7 @@ func loadData(unitPath, dir, labelsPath, split string) (*dataset, error) {
 
 	if d.ExplWhy != "" {
 		d.LabelsWhy = d.ExplWhy
-	} else if d.Labels, d.LabelsWhy, err = d.loadLabels(labelsPath); err != nil {
+	} else if d.Labels, d.LabelsWhy, err = d.loadLabels(labelsPath, dir); err != nil {
 		return nil, err
 	}
 
@@ -276,9 +276,10 @@ func loadData(unitPath, dir, labelsPath, split string) (*dataset, error) {
 }
 
 // loadLabels reads the frozen claim labels (columns id, claim_id, label). The
-// file counts only if FROZEN.md next to it records its hash, so an edited or
-// unfrozen file skips the human suite instead of scoring against it.
-func (d *dataset) loadLabels(path string) (map[labelKey]domain.ClaimLabel, string, error) {
+// file counts only if the SHA-256 line of FROZEN.md in the data directory
+// (written by scripts/check_labels.py --freeze) is its hash, so an edited or
+// unfrozen file, wherever --labels points, skips the human suite.
+func (d *dataset) loadLabels(path, dataDir string) (map[labelKey]domain.ClaimLabel, string, error) {
 	b, why, err := d.read(path)
 	if err != nil {
 		return nil, "", err
@@ -287,9 +288,9 @@ func (d *dataset) loadLabels(path string) (map[labelKey]domain.ClaimLabel, strin
 		return nil, why + " (the labels are not frozen yet)", nil
 	}
 	sha := d.Files[len(d.Files)-1].SHA
-	frozen := filepath.Join(filepath.Dir(path), "FROZEN.md")
-	if fb, err := os.ReadFile(frozen); err != nil || !bytes.Contains(fb, []byte(sha)) {
-		return nil, fmt.Sprintf("%s is not the frozen set: %s does not record its SHA-256 %s", path, frozen, sha), nil
+	frozen := filepath.Join(dataDir, "FROZEN.md")
+	if frozenSHA(frozen) != sha {
+		return nil, fmt.Sprintf("%s is not the frozen set: the SHA-256 line of %s is not its hash %s", path, frozen, sha), nil
 	}
 	rows, err := csv.NewReader(bytes.NewReader(b)).ReadAll()
 	if err != nil {
@@ -331,6 +332,20 @@ func (d *dataset) loadLabels(path string) (map[labelKey]domain.ClaimLabel, strin
 		}
 	}
 	return out, "", nil
+}
+
+// frozenSHA returns the hash on the "- SHA-256: <hex>" line, or "".
+func frozenSHA(path string) string {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	for _, l := range strings.Split(string(b), "\n") {
+		if v, ok := strings.CutPrefix(strings.TrimSpace(l), "- SHA-256:"); ok {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
 }
 
 // worst collapses results into one label.
