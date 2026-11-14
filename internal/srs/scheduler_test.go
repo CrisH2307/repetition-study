@@ -423,3 +423,82 @@ func TestReviewEventsStayAppendOnly(t *testing.T) {
 		t.Error("delete on review_events should be rejected")
 	}
 }
+
+func (e *env) rowCount(table string) (n int) {
+	if err := e.conn.QueryRow(e.ctx, `SELECT count(*) FROM `+table).Scan(&n); err != nil {
+		e.t.Fatal(err)
+	}
+	return n
+}
+
+func TestNeverScheduledConceptIsDueAfterOverdue(t *testing.T) {
+	e := newEnv(t)
+	overdue, o1, _, _ := e.concept()
+	fresh, _, _, _ := e.concept()
+	if _, err := e.s.ApplyTeachBack(e.ctx, overdue, []domain.ClaimResult{lbl(o1, domain.LabelContradicted)}); err != nil {
+		t.Fatal(err)
+	}
+	e.clock.Advance(48 * time.Hour)
+	events, schedules := e.rowCount("review_events"), e.rowCount("concept_schedules")
+	got, err := e.s.DueWithReasons(e.ctx, e.clock.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain, err := e.s.Due(e.ctx, e.clock.Now())
+	if err != nil || len(plain) != len(got) {
+		t.Fatalf("Due returned %d, DueWithReasons %d (%v)", len(plain), len(got), err)
+	}
+	iNew, iOverdue := -1, -1
+	for i, d := range got {
+		if d.CardID != nil {
+			continue
+		}
+		switch d.ConceptID {
+		case fresh:
+			iNew = i
+			if d.Reason != "New topic: not taught yet" || !d.DueAt.Equal(e.clock.Now().UTC()) || d.ConceptName == "" {
+				t.Errorf("new item %+v", d)
+			}
+		case overdue:
+			iOverdue = i
+		}
+	}
+	if iNew < 0 || iOverdue < 0 || iNew < iOverdue {
+		t.Errorf("new concept at %d, overdue at %d; want both present, overdue first", iNew, iOverdue)
+	}
+	if iNew >= 0 && plain[iNew].Reason == "" {
+		t.Error("Due dropped the reason")
+	}
+	if n := e.rowCount("review_events"); n != events {
+		t.Errorf("listing wrote events: %d -> %d", events, n)
+	}
+	if n := e.rowCount("concept_schedules"); n != schedules {
+		t.Errorf("listing wrote schedules: %d -> %d", schedules, n)
+	}
+}
+
+func TestFinishOnNeverScheduledConcept(t *testing.T) {
+	e := newEnv(t)
+	id, r1, _, _ := e.concept()
+	sess := e.q(`INSERT INTO teach_sessions (concept_id) VALUES ($1) RETURNING id`, id)
+	if _, err := e.s.ApplyTeachBackSession(e.ctx, sess, id, []domain.ClaimResult{lbl(r1, domain.LabelSupported)}); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err := e.conn.QueryRow(e.ctx, `SELECT count(*) FROM review_events WHERE concept_id = $1 AND event_type = 'teach_back'`, id).Scan(&n); err != nil || n != 1 || e.eventCount(id) != 1 {
+		t.Errorf("teach_back events %d, all events %d (%v), want exactly 1", n, e.eventCount(id), err)
+	}
+	if err := e.conn.QueryRow(e.ctx, `SELECT count(*) FROM concept_schedules WHERE concept_id = $1`, id).Scan(&n); err != nil || n != 1 {
+		t.Errorf("%d schedule rows, want 1 (%v)", n, err)
+	}
+	// Now scheduled, so it is no longer listed as new.
+	got, err := e.s.DueWithReasons(e.ctx, e.clock.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range got {
+		if d.ConceptID == id && d.Reason == "New topic: not taught yet" {
+			t.Errorf("taught concept still listed as new: %+v", d)
+		}
+	}
+}
