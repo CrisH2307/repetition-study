@@ -89,6 +89,8 @@ func (a *api) fail(w http.ResponseWriter, r *http.Request, err error) {
 		writeJSON(w, 499, map[string]string{"error": "request canceled"})
 		return
 	case errors.Is(err, context.DeadlineExceeded):
+		// The caller's deadline passed mid-request (Finish returns ctx.Err()). Not a server fault.
+		a.Log.Info("request deadline passed", "method", r.Method, "path", r.URL.Path)
 		code, msg = 504, "timed out"
 	case isNotFound(err):
 		code, msg = 404, "not found"

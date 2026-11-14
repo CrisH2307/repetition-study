@@ -2,8 +2,11 @@ package app
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -177,19 +180,35 @@ func TestBadInput(t *testing.T) {
 	}
 }
 
-type cancelingEngine struct{ *fakes.TeachEngine }
-
-func (cancelingEngine) Finish(context.Context, string) (domain.Report, error) {
-	return domain.Report{}, context.Canceled
+type failingEngine struct {
+	*fakes.TeachEngine
+	err error
 }
 
-// A caller that hangs up mid-Finish is not a server error.
-func TestFinishCanceledByCaller(t *testing.T) {
-	clock := fakes.NewClock()
-	h := NewHandler(Deps{Teach: cancelingEngine{&fakes.TeachEngine{}}, Sched: &fakes.Scheduler{Clock: clock},
-		Planner: fakes.Planner{}, Subjects: &memSubjects{}, Clock: clock})
-	rec := do(h, "POST", "/v1/teach/sessions/x/finish", "")
-	if rec.Code != 499 || !strings.Contains(rec.Body.String(), `"error"`) {
-		t.Fatalf("got %d %s, want 499 with an error body", rec.Code, rec.Body)
+func (f failingEngine) Finish(context.Context, string) (domain.Report, error) {
+	return domain.Report{}, f.err
+}
+
+// A caller that hangs up or runs out of time mid-Finish is not a server
+// error: no 500 and no error log line.
+func TestFinishCallerGaveUp(t *testing.T) {
+	for _, c := range []struct {
+		err  error
+		code int
+	}{
+		{context.Canceled, 499},
+		{fmt.Errorf("teach: %w", context.DeadlineExceeded), 504},
+	} {
+		var logs bytes.Buffer
+		clock := fakes.NewClock()
+		h := NewHandler(Deps{Teach: failingEngine{&fakes.TeachEngine{}, c.err}, Sched: &fakes.Scheduler{Clock: clock},
+			Planner: fakes.Planner{}, Subjects: &memSubjects{}, Clock: clock, Log: slog.New(slog.NewTextHandler(&logs, nil))})
+		rec := do(h, "POST", "/v1/teach/sessions/x/finish", "")
+		if rec.Code != c.code || !strings.Contains(rec.Body.String(), `"error"`) {
+			t.Errorf("%v: got %d %s, want %d with an error body", c.err, rec.Code, rec.Body, c.code)
+		}
+		if l := logs.String(); !strings.Contains(l, "level=INFO") || strings.Contains(l, "level=ERROR") {
+			t.Errorf("%v: want one quiet info line, got %q", c.err, l)
+		}
 	}
 }

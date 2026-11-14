@@ -27,7 +27,7 @@ type DB = planner.DB
 type Config struct {
 	DatabaseURL  string
 	StudentModel string // model id for the AI student, "fake" works offline
-	CheckerModel string // model id for the checker, "fake" works offline
+	CheckerModel string // model id for the checker, "fake" works offline, "fake-down" always fails
 	Log          *slog.Logger
 }
 
