@@ -521,7 +521,7 @@ func eight(st status) (modelReport, []string) {
 func TestVerdictNeedsAllEightRows(t *testing.T) {
 	m, suites := eight(pass)
 	lk := result{Key: "leak", Status: pass}
-	rep := report{Models: []modelReport{m}, Suites: suites, Leak: &lk, StudentModel: "s"}
+	rep := report{Models: []modelReport{m}, Suites: suites, Leak: &lk, StudentModel: "s", Split: "test"}
 	if v := rep.verdict(m); !strings.Contains(v, "Every bar of gate G0 is met") {
 		t.Errorf("8 passes: %s", v)
 	}
@@ -539,6 +539,27 @@ func TestVerdictNeedsAllEightRows(t *testing.T) {
 	rep.Suites, rep.StudentModel = suites, "fake"
 	if v := rep.verdict(m); !strings.Contains(v, "Dry run") || strings.Contains(v, "is met") {
 		t.Errorf("dry run: %s", v)
+	}
+}
+
+// Only the test split may pass or fail a row.
+func TestDevSplitHasNoVerdict(t *testing.T) {
+	m, suites := eight(pass)
+	m.Results[1].Status = notRun
+	lk := result{Key: "leak", Status: fail, Headline: "numbers."}
+	for _, split := range []string{"dev", "all"} {
+		rep := report{Models: []modelReport{m}, Suites: suites, Leak: &lk, StudentModel: "s", Split: split}
+		out := rep.markdown()
+		if strings.Contains(out, "| PASS |") || strings.Contains(out, "| FAIL |") || strings.Contains(out, ": PASS.") || strings.Contains(out, ": FAIL.") {
+			t.Errorf("%s split: a row has a verdict", split)
+		}
+		if !strings.Contains(out, "DEV RUN on the "+split+" split") || !strings.Contains(out, "7 DEV RUN, 1 NOT RUN") || strings.Contains(rep.verdict(m), "met") {
+			t.Errorf("%s split: %s", split, rep.verdict(m))
+		}
+	}
+	rep := report{Models: []modelReport{m}, Suites: suites, Leak: &lk, StudentModel: "s", Split: "test"}
+	if !strings.Contains(rep.markdown(), "| PASS |") {
+		t.Error("the test split keeps its verdicts")
 	}
 }
 

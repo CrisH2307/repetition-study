@@ -27,6 +27,7 @@ const (
 	fail    status = "FAIL"
 	partial status = "PARTIAL" // the measured part meets the bar, one part is still missing
 	notRun  status = "NOT RUN" // nothing was measured, so it is never a pass
+	devRun  status = "DEV RUN" // measured on a split other than test: numbers only, no verdict
 )
 
 // suiteOrder is the row order of the PLAN gate table.

@@ -63,11 +63,18 @@ func (r report) rows(m modelReport) []result {
 	var out []result
 	for _, k := range r.Suites {
 		if x, ok := by[k]; ok {
+			if !r.testSplit() && x.Status != notRun {
+				x.Status = devRun
+			}
 			out = append(out, x)
 		}
 	}
 	return out
 }
+
+// testSplit reports whether rows may carry a verdict. split.json reserves the
+// gate for the test split; dev is for tuning and all mixes the two.
+func (r report) testSplit() bool { return r.Split == "test" }
 
 // verdict is one line per model. It never says the gate is met unless every
 // one of the eight rows was run and passed.
@@ -79,6 +86,8 @@ func (r report) verdict(m modelReport) string {
 	}
 	counts := fmt.Sprintf("%d PASS, %d FAIL, %d PARTIAL, %d NOT RUN", n[pass], n[fail], n[partial], n[notRun])
 	switch {
+	case !r.testSplit():
+		return fmt.Sprintf("%s: %d DEV RUN, %d NOT RUN. Run on the %s split, so there is no gate verdict: the gate is decided on the test split only.", m.Model, n[devRun], n[notRun], r.Split)
 	case r.dryRun():
 		return fmt.Sprintf("%s: %s. Dry run with a fake model, so this says nothing about the gate.", m.Model, counts)
 	case n[pass] == len(suiteOrder):
@@ -95,11 +104,14 @@ func (r report) summary() string {
 	if r.dryRun() {
 		b.WriteString("**DRY RUN. A fake model that answers nothing was used. Nothing on this page is a gate result.**\n\n")
 	}
+	if !r.testSplit() {
+		fmt.Fprintf(&b, "**DEV RUN on the %s split. These numbers are for tuning only. No row passes or fails here; the gate is decided on the test split.**\n\n", r.Split)
+	}
 	if r.CapHit {
 		fmt.Fprintf(&b, "**The run stopped early: the spend cap of $%.2f was about to be passed ($%.4f spent). Tests that did not finish say NOT RUN.**\n\n", r.Cap, r.Spent)
 	}
 	b.WriteString("This page says whether the automatic checker is good enough to be allowed to move review dates. Each row is one test.\n\n")
-	b.WriteString("- PASS: the test was run and met its bar.\n- FAIL: the test was run and did not meet its bar.\n- PARTIAL: the part a computer can measure met its bar, and one part is still missing (usually a person has to look).\n- NOT RUN: the test could not be measured. It does not count as a pass.\n\n")
+	b.WriteString("- PASS: the test was run and met its bar.\n- FAIL: the test was run and did not meet its bar.\n- PARTIAL: the part a computer can measure met its bar, and one part is still missing (usually a person has to look).\n- NOT RUN: the test could not be measured. It does not count as a pass.\n- DEV RUN: measured on a practice split, so it has numbers but no pass or fail.\n\n")
 	b.WriteString("| Test | What it asks | Bar |")
 	for _, m := range r.Models {
 		fmt.Fprintf(&b, " %s |", m.Model)
