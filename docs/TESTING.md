@@ -137,19 +137,13 @@ What you should see: a line that starts with `ok`.
 
 This test decides whether the checker is good enough to change the review dates. If it fails, the checker's findings are shown only as suggestions.
 
-**The 20 explanations.** We prepare 20 short student explanations: about 10 correct, 5 partly correct, 5 wrong, each split into small statements. You and one classmate (not Cris, because you know this subject) each give every statement a label, working alone. Cris builds the tools and does not label:
-- `supported`: the explanation is correct
-- `partial`: partly correct
-- `contradicted`: it says something that is wrong
-- `absent`: it leaves out something important
+**The labels are done.** You and your classmate labelled the 20 explanations on your own, agreed on the few differences, and the list is frozen in `eval/data/labels_final.csv`. Nobody changes it, even if a result looks bad. You have nothing more to label.
 
-Steps:
-1. Label your sheet by yourself. Do not look at your classmate's labels. The guide is `eval/data/LABELLING.md`.
-2. Cris runs a tool that measures how often you two agree. It must be at least 0.6 (a score from 0 to 1). If it is lower, you two talk about the differences and label again.
-3. You and your classmate agree on every remaining difference. The agreed list is saved as `labels_final.csv`.
-4. After that file is saved, nobody changes it, even if a result looks bad.
+**Your job now has two parts, both after Cris runs the gate** (the steps Cris follows are in `docs/GATE.md`). Cris will tell you when it is ready.
+1. Read the report at `eval/results/gate.md`. It starts with a plain summary for you. Compare each line with the table below.
+2. Fill in the citation sheet. Cris will send you `citations_to_rate.csv`. For each row, read the correction and the quote. In the last column, `relevant`, write `yes` if the quote really supports the correction, otherwise `no`. Then send the sheet back to Cris. Do not paste course text anywhere public.
 
-**What counts as a pass.** Cris runs the checker. You read the report at `eval/results/gate.md`. It starts with a plain summary for you.
+**What counts as a pass.** Cris runs the checker and sends you the report.
 
 | Question | Pass |
 | --- | --- |

@@ -8,7 +8,9 @@ A student explains a concept in a derivation-heavy course, typing LaTeX. An AI s
 
 ## Where we are
 
-Done as libraries with tests: contract, schema, scheduler, planner, checker, teach engine, LLM clients, parser. Not done: any real model call, any labelled eval data, a database store for teaching, the API handlers (1 of 15 paths), any web page. The gate has never run.
+Built and merged into `qa`: contract v2, citation verification (`internal/cite`), Postgres store, scheduler fixes, planner time zones, a vendor-neutral LLM layer with metering and a spend cap, the outage state (`unchecked`, no schedule change), the API handlers, a typed teach page in `web/`, never-taught concepts counting as due, a `fake-down` checker switch, `cmd/evalcheck` running all 8 gate suites, and frozen human labels (Dino and a classmate, kappa 0.964, 2 settled).
+
+Left: real model runs (the live check of the LLM layer, then P0-GATE, #23; steps in `docs/GATE.md`), Dino's page testing (#26, `docs/TESTING.md`), and the UI design (#51). No real model call has been made yet, because the spend is not approved. The gate has never run.
 
 ## Phase 0: prove the checker (target: tonight, then Dino tests)
 
@@ -62,4 +64,4 @@ Voice input, digest, timed blocks, extra screens. Never cut the citation fix, th
 
 ## Open
 
-D16 (name) and D18 (hours each of you can give). A classmate for labelling still needs to be recruited by Dino.
+D16 (name) and D18 (hours each of you can give). Spend approval for the real model runs. A verified price for the student model in `internal/llm/models.json`, which `evalcheck` needs before it will run with a cap.
