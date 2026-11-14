@@ -342,13 +342,9 @@ func cardText(concept string, claims map[string]claimRow, r domain.ClaimResult) 
 	return front, back, true
 }
 
-// ReasonedDue is a due item with the reason it is due.
-// The domain DueItem has no reason field and the contract is frozen, so the
-// reason lives here. Callers that need it use DueWithReasons.
-type ReasonedDue struct {
-	domain.DueItem
-	Reason string `json:"reason"`
-}
+// ReasonedDue wraps DueItem for callers that use it by name. It must not declare
+// its own Reason: that shadowed DueItem.Reason, so Due returned it empty.
+type ReasonedDue struct{ domain.DueItem }
 
 func (s *Scheduler) Due(ctx context.Context, now time.Time) ([]domain.DueItem, error) {
 	r, err := s.DueWithReasons(ctx, now)
@@ -403,7 +399,8 @@ func (s *Scheduler) DueWithReasons(ctx context.Context, now time.Time) ([]Reason
 		if err := crows.Scan(&c.ID, &c.ConceptID, &c.ClaimID, &c.Front, &c.Back); err != nil {
 			return nil, err
 		}
-		it := ReasonedDue{Reason: "card under due concept: " + reasons[c.ConceptID]}
+		var it ReasonedDue
+		it.Reason = "card under due concept: " + reasons[c.ConceptID]
 		it.ConceptID, it.CardID, it.Card = c.ConceptID, &c.ID, &c
 		for _, p := range out {
 			if p.ConceptID == c.ConceptID && p.CardID == nil {

@@ -311,6 +311,11 @@ func TestDueReasonsAndInterleave(t *testing.T) {
 	if err != nil || len(plain) != len(got) {
 		t.Errorf("Due returned %d, DueWithReasons %d (%v)", len(plain), len(got), err)
 	}
+	for i, d := range plain {
+		if d.Reason == "" {
+			t.Errorf("Due item %d has an empty reason", i)
+		}
+	}
 }
 
 func TestReviewCardMovesConceptSchedule(t *testing.T) {
