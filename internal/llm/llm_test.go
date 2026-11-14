@@ -254,4 +254,14 @@ func TestNewRoutesAndFake(t *testing.T) {
 	if err := f.JSON(ctx, domain.LLMRequest{}, &out); err != nil || len(m.Calls()) != 1 {
 		t.Fatalf("err=%v calls=%v", err, m.Calls())
 	}
+	d, err := New(ctx, "fake-down", m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.JSON(ctx, domain.LLMRequest{}, &out); err == nil {
+		t.Fatal("fake-down JSON must fail")
+	}
+	if _, err := d.Stream(ctx, domain.LLMRequest{}); err == nil {
+		t.Fatal("fake-down Stream must fail")
+	}
 }

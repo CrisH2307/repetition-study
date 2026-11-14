@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -19,6 +18,7 @@ import (
 	"github.com/CrisH2307/repetition-study/internal/cite"
 	"github.com/CrisH2307/repetition-study/internal/domain"
 	"github.com/CrisH2307/repetition-study/internal/fakes"
+	"github.com/CrisH2307/repetition-study/internal/llm"
 	"github.com/CrisH2307/repetition-study/internal/store"
 	"github.com/CrisH2307/repetition-study/migrations"
 )
@@ -335,19 +335,19 @@ func TestFullLoopFakeModel(t *testing.T) {
 	}
 }
 
-type failingLLM struct{}
-
-func (failingLLM) Stream(context.Context, domain.LLMRequest) (<-chan domain.Delta, error) {
-	return nil, errors.New("down")
-}
-func (failingLLM) JSON(context.Context, domain.LLMRequest, any) error {
-	return errors.New("checker is down")
-}
-
 // With the checker down, Finish still answers, the report is unchecked and no
 // teach_back event is written, so no review date moves.
 func TestCheckerDownGivesUncheckedReport(t *testing.T) {
-	e := newEnv(t, &fakes.LLM{Reply: "Why does that happen?"}, failingLLM{}, "")
+	// The same pair Dino runs: STUDENT_MODEL=fake CHECKER_MODEL=fake-down.
+	student, err := llm.New(context.Background(), "fake", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	down, err := llm.New(context.Background(), "fake-down", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := newEnv(t, student, down, "fake-down")
 	before := e.teachBacks()
 	var ts domain.TeachSession
 	e.call("POST", "/v1/teach/sessions", fmt.Sprintf(`{"concept_id":%q}`, fxConcept), 201, &ts)
