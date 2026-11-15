@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"regexp"
 	"strings"
@@ -38,7 +39,7 @@ func run(t *testing.T, in domain.CheckInput, allowAbsent bool, results ...map[st
 	}
 	llm := &fakes.LLM{JSONReply: string(b)}
 	var logs bytes.Buffer
-	c := &Checker{LLM: llm, AllowAbsent: allowAbsent, Log: slog.New(slog.NewTextHandler(&logs, nil))}
+	c := &Checker{LLM: llm, AllowAbsent: allowAbsent, Votes: 1, Log: slog.New(slog.NewTextHandler(&logs, nil))}
 	o, err := c.CheckDetailed(context.Background(), in)
 	if err != nil {
 		t.Fatal(err)
@@ -207,5 +208,80 @@ func TestUntrustedNeutralisesFenceTags(t *testing.T) {
 	}
 	if got := untrusted("latex", "a<b"); got != "<latex>\na<b\n</latex>" {
 		t.Errorf("ordinary < must stay: %q", got)
+	}
+}
+
+// seqLLM returns one scripted reply per JSON call, in order. A reply of "err"
+// fails that call.
+type seqLLM struct {
+	fakes.LLM
+	replies []string
+	calls   int
+}
+
+func (s *seqLLM) JSON(_ context.Context, _ domain.LLMRequest, out any) error {
+	r := s.replies[s.calls]
+	s.calls++
+	if r == "err" {
+		return errors.New("model down")
+	}
+	return json.Unmarshal([]byte(r), out)
+}
+
+func reply(results ...map[string]any) string {
+	b, _ := json.Marshal(map[string]any{"results": results})
+	return string(b)
+}
+
+func labelled(label string) map[string]any {
+	return map[string]any{"claim_id": "k2", "student_text": "x", "label": label}
+}
+
+func TestVote(t *testing.T) {
+	good := wrong("The derivative of x^2 is 2x.", "s1")
+	other := wrong("d/dx x^n = n x^(n-1)", "s1")
+	other["correction"] = "second run"
+	for _, tc := range []struct {
+		name    string
+		replies []string
+		label   domain.ClaimLabel // "" means an error is wanted
+		corr    string
+	}{
+		{"two of three win", []string{reply(labelled("supported")), reply(good), reply(other)}, domain.LabelContradicted, "It is 2x, not x."},
+		{"three-way split", []string{reply(labelled("supported")), reply(labelled("partial")), reply(good)}, "", ""},
+		{"one run errors", []string{reply(good), "err", reply(good)}, "", ""},
+		{"silent majority drops claim", []string{reply(good), reply(), reply()}, "none", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			llm := &seqLLM{replies: tc.replies}
+			c := &Checker{LLM: llm, Log: slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))}
+			o, err := c.CheckDetailed(context.Background(), fixture())
+			switch {
+			case tc.label == "":
+				if err == nil {
+					t.Fatalf("want error, got %+v", o)
+				}
+				return
+			case err != nil:
+				t.Fatal(err)
+			case llm.calls != 3:
+				t.Fatalf("calls %d, want 3", llm.calls)
+			case tc.label == "none":
+				if len(o.Results) != 0 {
+					t.Fatalf("want no results, got %+v", o.Results)
+				}
+				return
+			}
+			if len(o.Results) != 1 {
+				t.Fatalf("want 1 result, got %+v", o.Results)
+			}
+			r := o.Results[0]
+			if r.Label != tc.label || r.Correction == nil || *r.Correction != tc.corr || r.Citation == nil || r.Citation.Quote != "The derivative of x^2 is 2x." {
+				t.Fatalf("got %+v", r)
+			}
+			if o.Proposed != 2 || o.Valid != 2 {
+				t.Fatalf("counts %+v", o)
+			}
+		})
 	}
 }
