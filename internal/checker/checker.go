@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strings"
 
 	"github.com/CrisH2307/repetition-study/internal/domain"
@@ -40,9 +41,15 @@ Rules
 Reply with JSON only, exactly this shape:
 {"results":[{"claim_id":string|null,"student_text":string,"label":"supported"|"partial"|"contradicted","citation":{"source_id":string,"quote":string,"locator":string}|null,"correction":string|null,"probe_hint":string|null}]}`
 
-// untrusted fences student text so it cannot close its own tag.
+// fenceTag matches anything that could read as an opening or closing fence
+// tag: any case, spaces, slashes or backslashes before the name, with or
+// without the closing ">".
+var fenceTag = regexp.MustCompile(`(?i)<[\s/\\]*(transcript|taught|latex)\b`)
+
+// untrusted fences student text so it cannot open or close any fence tag.
+// The "<" of every fence-like tag becomes "&lt;", so the model sees text.
 func untrusted(tag, s string) string {
-	s = strings.ReplaceAll(s, "</"+tag+">", "< /"+tag+">")
+	s = fenceTag.ReplaceAllStringFunc(s, func(m string) string { return "&lt;" + m[1:] })
 	return "<" + tag + ">\n" + s + "\n</" + tag + ">"
 }
 

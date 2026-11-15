@@ -25,6 +25,9 @@ const OpenRouterPrefix = "openrouter/"
 
 const openRouterBase = "https://openrouter.ai/api/v1"
 
+// checkerSeed is fixed so repeated checker calls on the same input match.
+const checkerSeed = 7
+
 // OpenRouter fills any role over the chat completions API (OpenAI shape).
 // Docs: https://openrouter.ai/docs/api-reference/overview (read 2026-11-14).
 // Not run against the live API: every wire detail below comes from the docs.
@@ -115,6 +118,14 @@ func (o *OpenRouter) JSON(ctx context.Context, req domain.LLMRequest, out any) e
 		return err
 	}
 	body, model := o.body(req, o.JSONMaxTokens)
+	// Only the checker calls JSON, so ask for its most repeatable output.
+	// Docs (openrouter.ai/docs/api-reference/parameters, read 2026-11-15):
+	// temperature is a float 0.0 to 2.0, seed an integer whose determinism
+	// "is not guaranteed for some models". The GPT 6 Luna model page lists
+	// seed as accepted but not temperature. UNVERIFIED on the live API:
+	// whether Luna ignores temperature (default routing) or answers 400.
+	body["temperature"] = 0
+	body["seed"] = checkerSeed
 	if s := schemaFor(out); s != nil {
 		body["response_format"] = map[string]any{"type": "json_schema",
 			"json_schema": map[string]any{"name": "reply", "strict": false, "schema": s}}

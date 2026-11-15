@@ -192,3 +192,32 @@ func TestOpenRouterLunaBothRoles(t *testing.T) {
 		t.Errorf("meter %+v", c)
 	}
 }
+
+// The checker's JSON calls ask for repeatable output; student streams do not.
+func TestOpenRouterRepeatableSettings(t *testing.T) {
+	var body string
+	srv := orServer(t, &body, func(w http.ResponseWriter) {
+		fmt.Fprint(w, `{"choices":[{"message":{"content":"{}"}}]}`)
+	})
+	defer srv.Close()
+	o := NewOpenRouter("k", orModel, srv.URL)
+	var out struct{}
+	if err := o.JSON(context.Background(), orReq, &out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(body, `"temperature":0`) || !strings.Contains(body, `"seed":7`) {
+		t.Errorf("json request lacks temperature 0 and seed: %s", body)
+	}
+
+	srv2 := orServer(t, &body, func(w http.ResponseWriter) { fmt.Fprint(w, "data: [DONE]\n\n") })
+	defer srv2.Close()
+	o = NewOpenRouter("k", orModel, srv2.URL)
+	ch, err := o.Stream(context.Background(), orReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	collect(t, ch)
+	if strings.Contains(body, `"temperature"`) || strings.Contains(body, `"seed"`) {
+		t.Errorf("stream request must keep model defaults: %s", body)
+	}
+}
