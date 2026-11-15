@@ -20,7 +20,7 @@ var (
 
 // Options tunes timeouts. Zero values use the defaults.
 type Options struct {
-	CheckTimeout time.Duration // for the final check at Finish. default 20s
+	CheckTimeout time.Duration // for the final check at Finish. default 60s
 	Log          *slog.Logger
 }
 
@@ -38,7 +38,7 @@ type Engine struct {
 
 func New(store Store, student domain.LLM, checker domain.Checker, sched domain.SessionScheduler, opt Options) *Engine {
 	if opt.CheckTimeout <= 0 {
-		opt.CheckTimeout = 20 * time.Second // ponytail: not measured on real models; tune after P0-GATE
+		opt.CheckTimeout = 60 * time.Second // ponytail: 3 checker calls run one after another (D23); not measured on real models, tune after P0-GATE
 	}
 	if opt.Log == nil {
 		opt.Log = slog.Default()
