@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Math } from './Math'
-import { DueItem, Label, Report, finish, listConcepts, sendTurn, startSession } from './api'
+import { DueItem, Label, Report, finish, listConcepts, listSubjects, sendTurn, startSession } from './api'
 
 const WORDS: Record<Label, string> = {
   supported: 'Correct',
@@ -33,11 +33,26 @@ export function App() {
   )
 }
 
+const dayWord = { weekday: 'long', month: 'short', day: 'numeric' } as const
+const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString()
+
+/** "Due today", or "Due Mon, Nov 16"; soon = due within 2 days (or already late). */
+export function dueText(iso: string, now = new Date()): { text: string; soon: boolean } {
+  const d = new Date(iso)
+  const soon = d.getTime() - now.getTime() <= 2 * 86400000
+  return { soon, text: sameDay(d, now) || d < now ? 'Due today' : `Due ${d.toLocaleDateString(undefined, dayWord)}` }
+}
+
 function Pick({ onStart }: { onStart: (id: string, name: string) => void }) {
   const [items, setItems] = useState<DueItem[] | null>(null)
+  const [course, setCourse] = useState('Your topics')
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
-  useEffect(() => { listConcepts().then(setItems, () => setErr('We could not load the topics. Please check the server is running and refresh the page.')) }, [])
+  useEffect(() => {
+    listConcepts().then(setItems, () => setErr('We could not load the topics. Please check the server is running and refresh the page.'))
+    // The API does not say which course a topic belongs to, so name the folder only when there is one course.
+    listSubjects().then((s) => s.length === 1 && setCourse(s[0].name), () => {})
+  }, [])
   const go = async (d: DueItem) => {
     setBusy(true)
     try { onStart((await startSession(d.concept_id)).id, d.concept_name) }
@@ -45,18 +60,28 @@ function Pick({ onStart }: { onStart: (id: string, name: string) => void }) {
   }
   return (
     <>
+      <h2>{new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</h2>
       <p>Pick a topic, then explain it in your own words. The AI student will ask you one question at a time. You will not see the course notes until you finish.</p>
       {err && <div className="error" role="alert">{err}</div>}
       {items === null && !err && <p>Loading topics...</p>}
       {items?.length === 0 && <p>There are no topics to practise right now.</p>}
-      <ul className="plain">
-        {items?.map((d) => (
-          <li key={d.concept_id} className="card">
-            <strong>{d.concept_name}</strong><div>{d.reason}</div>
-            <button disabled={busy} onClick={() => go(d)}>Start teaching</button>
-          </li>
-        ))}
-      </ul>
+      {!!items?.length && (
+        <details className="folder" open>
+          <summary>{course} ({items.length} {items.length === 1 ? 'topic' : 'topics'})</summary>
+          <ul className="plain">
+            {items.map((d) => {
+              const due = dueText(d.due_at)
+              return (
+                <li key={d.concept_id} className="topic">
+                  <div><strong>{d.concept_name}</strong>
+                    <div><small className={due.soon ? 'soon' : ''}>{due.text}</small> <small>{d.reason}</small></div></div>
+                  <button disabled={busy} onClick={() => go(d)} aria-label={`Start ${d.concept_name}`}>Start</button>
+                </li>
+              )
+            })}
+          </ul>
+        </details>
+      )}
     </>
   )
 }
