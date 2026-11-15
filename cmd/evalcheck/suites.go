@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"os"
 	"slices"
 	"sort"
 	"strings"
@@ -116,6 +118,19 @@ func (r *runner) check(key, conceptID, text, latex string) (checker.Outcome, err
 	return o, nil
 }
 
+// progress gets one short line per item, so a long run does not look frozen.
+// Stderr keeps stdout and gate.md unchanged.
+var progress io.Writer = os.Stderr
+
+// tick says item n of total in a suite has started, and what has been spent.
+func (r *runner) tick(key string, n, total int) {
+	spent := 0.0
+	if r.bud != nil && r.bud.meter != nil {
+		_, _, spent = r.bud.meter.Total()
+	}
+	fmt.Fprintf(progress, "  %s %s %d/%d, spent $%.4f\n", r.model, key, n, total, spent)
+}
+
 func (r *runner) explRun(e explanation, run int) (checker.Outcome, error) {
 	return r.check(fmt.Sprintf("e/%s/%d", e.ID, run), e.ConceptID, e.Text, "")
 }
@@ -181,7 +196,8 @@ func (r *runner) human() result {
 	res := result{Key: key}
 	var supN, supBad, wrongN, wrongHit, absN, absHit int
 	conf := map[domain.ClaimLabel]map[domain.ClaimLabel]int{}
-	for _, e := range r.d.Expl {
+	for i, e := range r.d.Expl {
+		r.tick(key, i+1, len(r.d.Expl))
 		o, err := r.explRun(e, 0)
 		if err != nil {
 			return stopped(key, err)
@@ -262,7 +278,8 @@ func (r *runner) perturb() result {
 	type cnt struct{ n, hit int }
 	by := map[string]*cnt{}
 	var total cnt
-	for _, p := range r.d.Perturb {
+	for i, p := range r.d.Perturb {
+		r.tick(key, i+1, len(r.d.Perturb))
 		o, err := r.check("p/"+p.ID, p.ConceptID, p.Text, "")
 		if err != nil {
 			return stopped(key, err)
@@ -324,7 +341,8 @@ func (r *runner) citations() result {
 		}
 	}
 	var proposed, valid, shipped, ok int
-	for _, e := range r.d.Expl {
+	for i, e := range r.d.Expl {
+		r.tick(key, i+1, len(r.d.Expl))
 		o, err := r.explRun(e, 0)
 		if err != nil {
 			return stopped(key, err)
@@ -381,10 +399,11 @@ func (r *runner) stability() result {
 	res := result{Key: key}
 	var total, same int
 	any := false
-	for _, e := range r.d.Expl {
+	for n, e := range r.d.Expl {
 		c := r.d.Concepts[e.ConceptID]
 		var runs [3]map[string]domain.ClaimLabel
 		for i := range runs {
+			r.tick(key, n*len(runs)+i+1, len(r.d.Expl)*len(runs))
 			o, err := r.explRun(e, i)
 			if err != nil {
 				return stopped(key, err)
@@ -424,7 +443,8 @@ func (r *runner) injection() result {
 	res := result{Key: key}
 	var labels, changes, hitAttacks int
 	any := false
-	for _, a := range r.d.Inject {
+	for n, a := range r.d.Inject {
+		r.tick(key, n+1, len(r.d.Inject))
 		e := r.d.AllExpl[a.ExplanationID]
 		c := r.d.Concepts[e.ConceptID]
 		base, err := r.explRun(e, 0)
@@ -490,7 +510,7 @@ func (r *runner) coverage() result {
 	}
 	var t strings.Builder
 	t.WriteString("Score per concept at each coverage level, highest coverage first.\n\n| concept | scores | verdict |\n|---|---|---|\n")
-	good := 0
+	good, done := 0, 0
 	for _, cid := range order {
 		rows := by[cid]
 		sort.SliceStable(rows, func(i, j int) bool { return rows[i].Coverage > rows[j].Coverage })
@@ -499,6 +519,8 @@ func (r *runner) coverage() result {
 		var cells []string
 		var detail strings.Builder
 		for _, x := range rows {
+			done++
+			r.tick(key, done, len(r.d.Coverage))
 			o, err := r.check("g/"+x.ID, cid, x.Text, "")
 			if err != nil {
 				return stopped(key, err)
@@ -555,7 +577,8 @@ func leak(ctx context.Context, student domain.LLM, d *dataset) result {
 	out := struct{ res result }{result{Key: key}}
 	var hard, soft int
 	var all strings.Builder
-	for _, s := range d.Leak {
+	for i, s := range d.Leak {
+		fmt.Fprintf(progress, "  leak %d/%d\n", i+1, len(d.Leak))
 		c := d.Concepts[s.ConceptID]
 		// The checker and scheduler are fakes: this suite only reads student replies.
 		eng := teach.New(teach.NewMemStore(d.Unit.Sources, c), student, &fakes.Checker{}, &fakes.Scheduler{}, teach.Options{Log: quiet})
@@ -681,6 +704,10 @@ func (r *runner) cost(models llm.Models) result {
 		return result{Key: key, Status: notRun, Headline: fmt.Sprintf("Not measured: the student model %s has no price in internal/llm/models.json, so cost cannot be computed.", r.studentModel)}
 	}
 	seen := map[string]bool{}
+	distinct := map[string]bool{}
+	for _, e := range r.d.Expl {
+		distinct[e.ConceptID] = true
+	}
 	var costs []float64
 	var turnLat, finLat []time.Duration
 	cut := 0
@@ -689,6 +716,7 @@ func (r *runner) cost(models llm.Models) result {
 			continue
 		}
 		seen[e.ConceptID] = true
+		r.tick(key, len(seen), len(distinct))
 		c := r.d.Concepts[e.ConceptID]
 		eng := teach.New(teach.NewMemStore(r.d.Unit.Sources, c), r.student, asChecker{r.ck}, &fakes.Scheduler{}, teach.Options{Log: quiet, CheckTimeout: callTimeout})
 		ts, err := eng.Start(r.ctx, c.ID)

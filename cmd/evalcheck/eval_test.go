@@ -820,3 +820,16 @@ func TestRunRefusesBadInput(t *testing.T) {
 		t.Errorf("suite selection not honoured:\n%s", g[:min(len(g), 2500)])
 	}
 }
+
+// Progress goes to stderr only: one line per item, never into stdout.
+func TestProgressLines(t *testing.T) {
+	var buf bytes.Buffer
+	old := progress
+	progress = &buf
+	defer func() { progress = old }()
+	r := &runner{ctx: context.Background(), model: "m", bud: &budget{}}
+	r.tick("human", 2, 5)
+	if got := buf.String(); got != "  m human 2/5, spent $0.0000\n" {
+		t.Fatalf("got %q", got)
+	}
+}
