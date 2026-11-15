@@ -39,6 +39,7 @@ export function mockApi(): Plugin {
           res.setHeader('Content-Type', 'application/json')
           res.end(JSON.stringify(body))
         }
+        if (url.startsWith('/subjects')) return json(200, [{ id: 's1', name: 'Fixture course', weekly_hours: 3, level: 'intermediate', weight: 1 }])
         if (url.startsWith('/reviews/due')) {
           return json(200, [
             { concept_id: C1, concept_name: 'Exponential races', card_id: null, card: null, due_at: iso(0), reason: 'Due today' },

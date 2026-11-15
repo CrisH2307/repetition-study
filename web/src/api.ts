@@ -9,7 +9,8 @@ export interface Report {
   session_id: string; concept_id: string; results: ClaimResult[]
   schedule: Schedule | null; status: 'checked' | 'unchecked'
 }
-export interface DueItem { concept_id: string; concept_name: string; reason: string }
+export interface DueItem { concept_id: string; concept_name: string; due_at: string; reason: string }
+export interface Subject { id: string; name: string }
 
 async function json<T>(r: Response): Promise<T> {
   if (!r.ok) throw new Error('The server said no. Please try again in a moment.')
@@ -19,6 +20,7 @@ const post = (url: string, body?: unknown) =>
   fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}) })
 
 export const listConcepts = () => fetch('/v1/reviews/due').then(json<DueItem[]>)
+export const listSubjects = () => fetch('/v1/subjects').then(json<Subject[]>)
 export const startSession = (concept_id: string) =>
   post('/v1/teach/sessions', { concept_id }).then(json<{ id: string }>)
 export const finish = (id: string) => post(`/v1/teach/sessions/${id}/finish`).then(json<Report>)
