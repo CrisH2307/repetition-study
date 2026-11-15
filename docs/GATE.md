@@ -39,7 +39,7 @@ There is no entry for a Gemini model. `evalcheck` refuses to run a model with no
 - add a verified price for your `STUDENT_MODEL` to `models.json` (commit it on its own branch first), or
 - pass `--max-cost 0`, which means no cap. Not recommended.
 
-The default cap is 5 US dollars across all models and suites together. The run stops before it passes the cap and still writes what it measured. Whether Gemini accepts the thinking setting of 0 in `models.json` is also unverified.
+Every check asks the checker model 3 times and keeps the majority label per claim (D23), so a run makes about 3 times as many checker calls as before and costs about 3 times as much on the checker side. The default cap is 5 US dollars across all models and suites together. The run stops before it passes the cap and still writes what it measured. Whether Gemini accepts the thinking setting of 0 in `models.json` is also unverified.
 
 ## 3. The command
 
