@@ -218,12 +218,12 @@ Open Chrome and go to **http://localhost:5173**
 
 | Step | What you do | What you should see |
 | --- | --- | --- |
-| P1 | Look at the first page | Two topics, "Exponential races" and "Poisson superposition". Each says "New topic: not taught yet" |
-| P2 | Click "Start teaching" on Exponential races | A box called "Your explanation". No course notes anywhere on the screen |
+| P1 | Look at the first page | Today's date as the heading, and one folded card called "Fixture course (2 topics)" holding two topics, "Exponential races" and "Poisson superposition". Each says "Due today" in red and "New topic: not taught yet", with a "Start" button |
+| P2 | Click "Start" on Exponential races | A box called "Your explanation", the line "Course notes are hidden until you finish." and a timer that counts up. No course notes anywhere on the screen |
 | P3 | Type: `The minimum of two exponentials with rates $a$ and $b$ has rate $a-b$.` | Under the box, the preview shows the formulas as proper math, not dollar signs |
 | P4 | Click "Send" | "The AI student asks:" shows one question. It never tells you the answer |
-| P5 | Click "I am done, check my explanation" | A list of what you wrote, with a tick box "I think this was right" |
-| P6 | Tick the box, then click "Show my results" | A results page. It says "You ticked 1 of 1 points as right." The "Next review" line shows one date crossed out and a new date after it |
+| P5 | Click "I am done, check my explanation" | The heading "How do you feel about this concept?" and your sentence, with three choices: "Right", "Not sure", "Wrong". The line "Only for you. Your review dates do not change." |
+| P6 | Choose "Right", then click "Show my results" | A results page. It says "Your guess: you marked 1 of 1 points as right." The "Next review" line shows one date crossed out and a new date after it |
 | P7 | Click "Pick another topic" | You are back on the topic list. Only "Poisson superposition" is left, because Exponential races is now set for review on a later day |
 | P8 | Do P2 to P7 again on "Poisson superposition" | Same as above. At the end the list says "There are no topics to practise right now." |
 
@@ -254,9 +254,9 @@ What you should see: one line that says `listening on :8080`, and the command ke
 | Step | What you do | What you should see |
 | --- | --- | --- |
 | D10a | In Chrome, reload the page | Two topics again, each saying "New topic: not taught yet" |
-| D10b | Click "Start teaching" on Exponential races, type the sentence from P3, click "Send" | The AI student asks one question, like before |
-| D10c | Click "I am done, check my explanation", tick the box, click "Show my results" | A box that says "We could not check this one. Nothing changed: your review dates are the same as before. Please try again later." There is no "Next review" line and no list of results |
-| D10d | Click "Pick another topic" | Both topics are still on the list, and each still says "New topic: not taught yet". That shows no date moved |
+| D10b | Click "Start" on Exponential races, type the sentence from P3, click "Send" | The AI student asks one question, like before |
+| D10c | Click "I am done, check my explanation", choose "Right", click "Show my results" | An amber box that says "Not checked yet. Nothing changed: your review date stays the same and your explanation is saved." with two buttons, "Try the check again" and "Try later". There is no "Next review" line and no list of results. Click "Try the check again": the same box stays, because the checker is still off |
+| D10d | Click "Try later" | Both topics are still on the list, and each still says "New topic: not taught yet". That shows no date moved |
 
 **Put it back.** In Window 1, press Ctrl+C, then run:
 
