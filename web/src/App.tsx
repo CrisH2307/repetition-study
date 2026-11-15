@@ -8,6 +8,8 @@ const WORDS: Record<Label, string> = {
   contradicted: 'Not right',
   absent: 'Not mentioned',
 }
+// App imports a component named Math, so avoid the global Math here
+const fmtTime = (n: number) => `${(n - (n % 60)) / 60}:${String(n % 60).padStart(2, '0')}`
 const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
 
 type Stage = { s: 'pick' } | { s: 'teach'; id: string; name: string } | { s: 'grade'; id: string; name: string } | { s: 'report'; r: Report; ticks: number; total: number }
@@ -64,6 +66,8 @@ function Teach({ id, name, points, onSent, onFinish }: { id: string; name: strin
   const [q, setQ] = useState('')
   const [streaming, setStreaming] = useState(false)
   const [err, setErr] = useState('')
+  const [secs, setSecs] = useState(0)
+  useEffect(() => { const t = setInterval(() => setSecs((n) => n + 1), 1000); return () => clearInterval(t) }, [])
   const send = async () => {
     const t = text.trim()
     if (!t) return
@@ -82,13 +86,17 @@ function Teach({ id, name, points, onSent, onFinish }: { id: string; name: strin
   return (
     <>
       <h2>{name}</h2>
+      <p className="row"><small>Course notes are hidden until you finish.</small>
+        <small role="timer" aria-label="Time spent">Time: {fmtTime(secs)}</small></p>
       <div className="card question" aria-live="polite">
         <strong>The AI student asks:</strong>
         <div>{streaming && !q ? 'Thinking...' : q ? <Math text={q} /> : 'Start by explaining the topic below. Use $...$ around formulas.'}</div>
+        <div className="note">The AI student only asks questions. It never corrects or teaches.</div>
       </div>
       {err && <div className="error" role="alert">{err}</div>}
       <label htmlFor="ed"><strong>Your explanation</strong></label>
       <textarea id="ed" value={text} onChange={(e) => setText(e.target.value)} placeholder="Example: The tail is $P(T>t)=e^{-at}$." />
+      <div className="note">Put formulas between dollar signs, like $x^2$.</div>
       <div className="card preview" aria-label="Preview"><small>Preview</small><div><Math text={text || '(your formulas appear here)'} /></div></div>
       <div className="row">
         <button disabled={streaming || !text.trim()} onClick={send}>Send</button>
@@ -99,26 +107,35 @@ function Teach({ id, name, points, onSent, onFinish }: { id: string; name: strin
   )
 }
 
+type Guess = 'right' | 'unsure' | 'wrong'
+const GUESS: [Guess, string][] = [['right', 'Right'], ['unsure', 'Not sure'], ['wrong', 'Wrong']]
+
 function Grade({ id, points, onDone }: { id: string; name: string; points: string[]; onDone: (r: Report, ticks: number) => void }) {
-  const [on, setOn] = useState<boolean[]>(points.map(() => false))
+  const [on, setOn] = useState<Guess[]>(points.map(() => 'unsure'))
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const go = async () => {
     setBusy(true); setErr('')
-    try { onDone(await finish(id), on.filter(Boolean).length) }
+    try { onDone(await finish(id), on.filter((g) => g === 'right').length) }
     catch { setErr('We could not check your explanation. Nothing was lost. Please try again.'); setBusy(false) }
   }
   return (
     <>
-      <h2>Before you see the results</h2>
-      <p>Tick each point you think you explained correctly. This is just for you to compare with the results.</p>
+      <h2>How do you feel about this concept?</h2>
+      <p>For each point, say whether you think it was right, not sure, or wrong.</p>
+      <p className="note">Only for you. Your review dates do not change.</p>
       <ul className="plain">
         {points.map((p, i) => (
           <li key={i} className="card">
-            <label>
-              <input type="checkbox" checked={on[i]} onChange={() => setOn(on.map((v, j) => (j === i ? !v : v)))} /> I think this was right:{' '}
-              <Math text={p} />
-            </label>
+            <fieldset className="grade">
+              <legend>Point {i + 1}: <Math text={p} /></legend>
+              {GUESS.map(([v, w]) => (
+                <label key={v}>
+                  <input type="radio" name={`g${i}`} checked={on[i] === v} onChange={() => setOn(on.map((x, j) => (j === i ? v : x)))} />
+                  {w}
+                </label>
+              ))}
+            </fieldset>
           </li>
         ))}
       </ul>
