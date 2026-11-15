@@ -469,7 +469,7 @@ func TestBudgetNeverPassesTheCapWithMixedPrices(t *testing.T) {
 		st := &priceStub{model: model, in: 1000, out: 2000, meter: meter}
 		g := newGuard(st, model, bud)
 		g.jsonOut, g.attempts = 2000, 1
-		r := &runner{ctx: context.Background(), model: model, d: d, bud: bud, ck: &checker.Checker{LLM: g, AllowAbsent: true, Log: quiet}}
+		r := &runner{ctx: context.Background(), model: model, d: d, bud: bud, ck: &checker.Checker{LLM: g, AllowAbsent: true, Votes: 1, Log: quiet}}
 		return r.coverage(), st
 	}
 	got, st := runFor("cheap") // 5 calls at $0.003
