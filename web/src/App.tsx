@@ -12,7 +12,7 @@ const WORDS: Record<Label, string> = {
 const fmtTime = (n: number) => `${(n - (n % 60)) / 60}:${String(n % 60).padStart(2, '0')}`
 const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
 
-type Stage = { s: 'pick' } | { s: 'teach'; id: string; name: string } | { s: 'grade'; id: string; name: string } | { s: 'report'; r: Report; ticks: number; total: number }
+type Stage = { s: 'pick' } | { s: 'teach'; id: string; name: string } | { s: 'grade'; id: string; name: string } | { s: 'report'; r: Report; id: string; ticks: number; total: number }
 
 export function App() {
   const [stage, setStage] = useState<Stage>({ s: 'pick' })
@@ -26,9 +26,9 @@ export function App() {
           onFinish={() => setStage({ s: 'grade', id: stage.id, name: stage.name })} />
       )}
       {stage.s === 'grade' && (
-        <Grade {...stage} points={points} onDone={(r, ticks) => setStage({ s: 'report', r, ticks, total: points.length })} />
+        <Grade {...stage} points={points} onDone={(r, ticks) => setStage({ s: 'report', r, id: stage.id, ticks, total: points.length })} />
       )}
-      {stage.s === 'report' && <ReportView {...stage} onAgain={() => setStage({ s: 'pick' })} />}
+      {stage.s === 'report' && <ReportView r={stage.r} id={stage.id} guess={stage.ticks} total={stage.total} onAgain={() => setStage({ s: 'pick' })} />}
     </main>
   )
 }
@@ -145,18 +145,34 @@ function Grade({ id, points, onDone }: { id: string; name: string; points: strin
   )
 }
 
-function ReportView({ r, ticks, total, onAgain }: { r: Report; ticks: number; total: number; onAgain: () => void }) {
+function ReportView({ r: first, id, guess, total, onAgain }: { r: Report; id: string; guess: number; total: number; onAgain: () => void }) {
+  const [r, setR] = useState(first)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const retry = async () => {
+    setBusy(true); setErr('')
+    try { setR(await finish(id)) } catch { setErr('The check is still not working. Your explanation is saved. Please try again later.') }
+    setBusy(false)
+  }
+  const unchecked = r.status === 'unchecked'
+  const found = r.results.filter((c) => c.label === 'supported').length
+  const before = r.schedule && new Date(r.schedule.due_before).getFullYear() > 2000 ? r.schedule.due_before : null
   return (
     <>
       <h2>Your results</h2>
-      <p>You ticked {ticks} of {total} points as right.</p>
-      {r.status === 'unchecked' ? (
-        <div className="banner" role="status"><strong>We could not check this one.</strong> Nothing changed: your review dates are the same as before. Please try again later.</div>
+      {unchecked ? (
+        <div className="banner" role="status">
+          <strong>Not checked yet.</strong> Nothing changed: your review date stays the same and your explanation is saved.
+          <div className="row"><button disabled={busy} onClick={retry}>{busy ? 'Trying...' : 'Try the check again'}</button>
+            <button className="plain" onClick={onAgain}>Try later</button></div>
+        </div>
       ) : r.schedule && (
         <div className="card" role="status">
-          Next review: <s>{day(r.schedule.due_before)}</s> &rarr; <strong>{day(r.schedule.due_after)}</strong>
+          Next review: {before && <><s>{day(before)}</s> &rarr; </>}<strong>{day(r.schedule.due_after)}</strong>
         </div>
       )}
+      {err && <div className="error" role="alert">{err}</div>}
+      <p>Your guess: you marked {guess} of {total} points as right.{!unchecked && <> The check found {found} correct.</>}</p>
       <ul className="plain">
         {r.results.map((c, i) => (
           <li key={i} className="card">
@@ -167,7 +183,7 @@ function ReportView({ r, ticks, total, onAgain }: { r: Report; ticks: number; to
           </li>
         ))}
       </ul>
-      <button onClick={onAgain}>Pick another topic</button>
+      {!unchecked && <button onClick={onAgain}>Pick another topic</button>}
     </>
   )
 }

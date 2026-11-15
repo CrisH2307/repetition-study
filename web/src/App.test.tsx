@@ -30,4 +30,5 @@ test('unchecked report says nothing changed', async () => {
   await u.click(await screen.findByRole('radio', { name: 'Right' }))
   await u.click(await screen.findByText('Show my results'))
   expect((await screen.findByRole('status')).textContent).toMatch(/Nothing changed/)
+  expect(screen.getByText('Try the check again')).toBeTruthy()
 })
