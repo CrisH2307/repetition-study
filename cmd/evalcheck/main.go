@@ -175,6 +175,7 @@ func run(args []string, stdout io.Writer) error {
 			return err
 		}
 	}
+	fmt.Fprintln(progress, "gate.md written to", gate)
 	fmt.Fprintf(stdout, "\n%s\nwrote %s\nprivate details in %s\nspend: %s\n", rep.summary(), gate, *privDir, meter.Summary())
 	if bud.hit {
 		return fmt.Errorf("stopped at the spend cap of $%.2f; %s has what was measured", *maxCost, gate)
