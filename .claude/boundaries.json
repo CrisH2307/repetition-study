@@ -185,5 +185,14 @@
       "web/",
       "rpi/P0-SLICE/"
     ]
+  },
+  "P0-OPENROUTER": {
+    "branch": "feature/openrouter",
+    "allow": [
+      "internal/llm/",
+      "docs/GATE.md",
+      "docs/DECISIONS.md",
+      "rpi/P0-OPENROUTER/"
+    ]
   }
 }

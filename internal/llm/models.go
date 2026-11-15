@@ -17,7 +17,7 @@ var modelsJSON []byte
 
 // ModelInfo is one models.json entry. Ids and prices live there, never in code.
 type ModelInfo struct {
-	Vendor      string  `json:"vendor"` // "gemini" or "anthropic"; empty means guess from the id prefix
+	Vendor      string  `json:"vendor"` // "gemini", "anthropic" or "openrouter"; empty means guess from the id prefix
 	InPerMTok   float64 `json:"in_per_mtok"`
 	OutPerMTok  float64 `json:"out_per_mtok"`
 	Source      string  `json:"source"`
@@ -47,12 +47,14 @@ func DefaultModels() Models {
 	return m
 }
 
-// Vendor returns "gemini" or "anthropic" for a model id.
+// Vendor returns "gemini", "anthropic" or "openrouter" for a model id.
 func (m Models) Vendor(id string) (string, error) {
 	if v := m.Models[id].Vendor; v != "" {
 		return v, nil
 	}
 	switch {
+	case strings.HasPrefix(id, OpenRouterPrefix):
+		return "openrouter", nil
 	case strings.HasPrefix(id, "gemini"):
 		return "gemini", nil
 	case strings.HasPrefix(id, "claude"):
