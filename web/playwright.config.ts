@@ -6,6 +6,7 @@ const db = process.env.DATABASE_URL ?? 'postgres://repetition:repetition@localho
 const api = (port: number, checker: string) => ({
   command: `go run ./cmd/api`,
   cwd: '..',
+  timeout: 180_000, // cold go build in CI
   url: `http://localhost:${port}/v1/subjects`,
   env: { DATABASE_URL: db, PORT: String(port), STUDENT_MODEL: 'fake', CHECKER_MODEL: checker },
   reuseExistingServer: false,
