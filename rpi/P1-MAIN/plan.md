@@ -31,7 +31,7 @@ Review per PR: boundary vs `.claude/boundaries.json`, CI green, diff read; `/cod
 | P1-WEB | #99 | #105 | merged (started early, needs only the contract) |
 | P1-API | #100 | #110 | merged |
 | P1-POLISH | #113 | | building (D47) |
-| P1-DEPLOY | #114 | | building, Vercel (D45) |
+| P1-DEPLOY | #114 | | building, Vercel plus Fly.io Toronto (D45) |
 | Test | #112 | | Cris tests (D47) |
 
 Rules from Cris (2026-11-16): no attribution footer or Co-Authored-By; every unit turns on PR auto-fix after opening its PR.
