@@ -5,6 +5,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/CrisH2307/repetition-study/internal/domain"
 	"github.com/CrisH2307/repetition-study/internal/fakes"
@@ -27,5 +28,20 @@ func TestWriteDisputes(t *testing.T) {
 	}
 	if !strings.Contains(got, `"a, ""quoted"" note"`) {
 		t.Errorf("csv quoting: %q", got)
+	}
+}
+
+func TestWriteMetrics(t *testing.T) {
+	fm := &fakes.MetricsStore{Users: []domain.UserWeeks{{UserID: "real-id"}}}
+	var b bytes.Buffer
+	now := time.Date(2026, 11, 16, 0, 0, 0, 0, time.UTC)
+	if err := writeMetrics(context.Background(), fm, 4, now, "s", &b); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(b.String(), "real-id") || !strings.Contains(b.String(), "week4_retention") {
+		t.Fatal(b.String())
+	}
+	if writeMetrics(context.Background(), fm, 4, now, "", &b) == nil || writeMetrics(context.Background(), 1, 4, now, "s", &b) == nil {
+		t.Fatal("want errors for no salt and unsupported store")
 	}
 }
