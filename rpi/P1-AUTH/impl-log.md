@@ -2,3 +2,4 @@
 
 - internal/auth service, cookie, middleware, CSRF. `go test -race ./internal/auth` green.
 - cmd/invite prints the link. `go test -race ./cmd/invite` green, `go build ./...` green.
+- Redeem revokes a session cookie the browser already had (review fix). Tests green.

@@ -76,6 +76,9 @@ func (a HTTP) Redeem(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "Could not sign you in. Please try again.")
 		return
 	}
+	if old, err := r.Cookie(CookieName); err == nil {
+		a.Auth.SignOut(r.Context(), old.Value) // best effort: the new cookie replaces it anyway
+	}
 	a.set(w, tok, exp)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(u)

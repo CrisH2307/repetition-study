@@ -200,3 +200,16 @@ func TestCrossOriginPostRefused(t *testing.T) {
 		t.Fatalf("same-origin: %d", w.Code)
 	}
 }
+
+func TestRedeemRevokesOldSession(t *testing.T) {
+	s, _, _ := setup()
+	h := handler(s)
+	inv, _ := s.NewInvite(context.Background(), "Dino")
+	old := redeem(t, h, inv)
+	if w := call(h, "POST", "/v1/auth/redeem", `{"token":"`+inv+`"}`, old.Value); w.Code != 200 {
+		t.Fatalf("re-redeem: %d", w.Code)
+	}
+	if _, err := s.UserFor(context.Background(), old.Value); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("old session still valid: %v", err)
+	}
+}
