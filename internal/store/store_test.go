@@ -307,3 +307,24 @@ func TestLoadPackIsIdempotent(t *testing.T) {
 		t.Fatal("empty pack must error")
 	}
 }
+
+func TestLoadPackSetsSourceSubject(t *testing.T) {
+	connect, s := loaded(t)
+	ctx := context.Background()
+	sub := pack().Subject.ID
+	srcs, err := s.CourseSources(ctx, domain.DemoUserID, sub)
+	if err != nil || len(srcs) != 1 || srcs[0].ID != srcCourse {
+		t.Fatalf("course sources = %v, %v", srcs, err)
+	}
+	// A reload fills a null subject_id left by an older load.
+	c := connect()
+	if _, err := c.Exec(ctx, `UPDATE sources SET subject_id = NULL`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.LoadPack(ctx, pack()); err != nil {
+		t.Fatal(err)
+	}
+	if srcs, err = s.CourseSources(ctx, domain.DemoUserID, sub); err != nil || len(srcs) == 0 || srcs[0].ID != srcCourse {
+		t.Fatalf("after reload = %v, %v", srcs, err)
+	}
+}
