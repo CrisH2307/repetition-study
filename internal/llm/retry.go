@@ -56,6 +56,10 @@ func (r Retry) do(ctx context.Context, fn func(ctx context.Context) error) error
 	return err
 }
 
+// errBadJSON marks a JSON reply that did not parse, often a cut-off one. It is
+// worth another attempt, so retryable() accepts it.
+var errBadJSON = errors.New("llm: reply is not the expected JSON")
+
 // retryable is true for timeouts, network errors and 429/5xx. The SDK errors
 // carry the status in their message, so this matches on text. ponytail: string
 // match, swap for typed errors if an SDK exposes them stably.
@@ -64,7 +68,7 @@ func retryable(err error) bool {
 	if errors.As(err, &nr) {
 		return false
 	}
-	if errors.Is(err, context.DeadlineExceeded) {
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, errBadJSON) {
 		return true
 	}
 	var ne net.Error

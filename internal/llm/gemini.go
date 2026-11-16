@@ -108,7 +108,7 @@ func (g *Gemini) JSON(ctx context.Context, req domain.LLMRequest, out any) error
 		in, o := usage(resp.UsageMetadata)
 		g.Meter.Record(Call{Model: model, In: in, Out: o, Latency: time.Since(start)})
 		if err := json.Unmarshal([]byte(resp.Text()), out); err != nil {
-			return errNoRetry{fmt.Errorf("llm: reply is not the expected JSON: %w", err)}
+			return fmt.Errorf("%w: %w", errBadJSON, err)
 		}
 		return nil
 	})
