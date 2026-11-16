@@ -75,21 +75,7 @@ func (u userTeach) LoadConcept(ctx context.Context, id string) (domain.Concept, 
 	if err != nil {
 		return domain.Concept{}, nil, err
 	}
-	// Packs loaded by cmd/seed leave sources.subject_id empty, so also take the
-	// sources the course's claims cite (the Phase 0 rule). Ownership is checked above.
-	_, cited, err := u.Store.LoadConcept(ctx, id)
-	if err != nil {
-		return domain.Concept{}, nil, err
-	}
-	seen := map[string]bool{}
-	all := srcs[:0:0]
-	for _, x := range append(srcs, cited...) {
-		if !seen[x.ID] {
-			seen[x.ID] = true
-			all = append(all, x)
-		}
-	}
-	return c, all, nil
+	return c, srcs, nil
 }
 
 // capLLM refuses calls once the app has spent cap dollars in the calendar
