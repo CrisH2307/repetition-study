@@ -14,5 +14,21 @@ services:
       interval: 2s
       timeout: 3s
       retries: 15
+  app:
+    profiles: ["prod"]
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in .env}
+      STUDENT_MODEL: ${STUDENT_MODEL:-}
+      CHECKER_MODEL: ${CHECKER_MODEL:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+    command: ["sh", "-c", "migrate && exec api"]
+    ports:
+      - "${PORT:-8080}:8080"
 volumes:
   pgdata:

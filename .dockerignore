@@ -1,0 +1,11 @@
+.env
+.env.*
+content/private/
+.git
+.claude
+.venv
+node_modules
+web/node_modules
+web/dist
+rpi
+eval
