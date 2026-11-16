@@ -37,7 +37,7 @@ func TestImportRows(t *testing.T) {
 		"Mean,second claim,statement,the middle value when sorted\n" + // ok, same concept
 		"Mean,bad quote,definition,not in the notes at all\n" + // row 4
 		"Mean,bad kind,opinion,the sum divided by n\n" + // row 5
-		"=HYPERLINK(\"x\"),claim,definition,the sum divided by n\n" + // ok, name is never echoed
+		"=1+1,claim,definition,the sum divided by n\n" + // ok, name is never echoed
 		"Mean,short\n" // row 7
 	j, err := im.Import(context.Background(), "a", sub, "f.csv", []byte(csv))
 	if err != nil {
