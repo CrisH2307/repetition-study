@@ -1,17 +1,22 @@
 openapi: 3.0.3
 info:
   title: Space Repetition API
-  version: 0.2.0
+  version: 0.3.0
   description: >
     The contract every unit builds against. Schemas mirror internal/domain.
-    No auth today: every request acts as the seeded demo user.
-    Times are RFC 3339 UTC. IDs are UUID strings. Errors are {"error": "..."}.
+    Sign-in is by invite link (D29): redeeming sets an HttpOnly `session` cookie.
+    Every /v1 path except /v1/auth/redeem needs that cookie and acts only on the
+    signed-in user's rows; another user's id gives 404, a missing session 401.
+    Times are RFC 3339 UTC. IDs are UUID strings. Errors are {"error": "..."} in plain words.
+security:
+  - session: []
 servers:
   - url: http://localhost:8080
 paths:
   /healthz:
     get:
       summary: Liveness check
+      security: []
       responses:
         "200":
           description: Service is up
@@ -157,7 +162,243 @@ paths:
       summary: Today's digest, one line per subject
       responses:
         "200": {description: Digest, content: {application/json: {schema: {$ref: "#/components/schemas/Digest"}}}}
+  /v1/auth/redeem:
+    post:
+      summary: Open an invite link. Creates the user on first use and signs in.
+      description: Sets the HttpOnly `session` cookie (30 days). Needs no cookie.
+      security: []
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, required: [token], properties: {token: {type: string}}}}}
+      responses:
+        "200": {description: Signed in, content: {application/json: {schema: {$ref: "#/components/schemas/User"}}}}
+        "404": {$ref: "#/components/responses/Error"}
+  /v1/auth/sign-out:
+    post:
+      summary: Sign out. Deletes the session and clears the cookie.
+      responses:
+        "204": {description: Signed out}
+  /v1/me:
+    get:
+      summary: The signed-in user
+      responses:
+        "200": {description: User, content: {application/json: {schema: {$ref: "#/components/schemas/User"}}}}
+        "401": {$ref: "#/components/responses/Error"}
+  /v1/courses:
+    get:
+      summary: List my courses
+      responses:
+        "200": {description: Courses, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Subject"}}}}}
+        "401": {$ref: "#/components/responses/Error"}
+    post:
+      summary: Add a course
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: "#/components/schemas/SubjectCreate"}}}
+      responses:
+        "201": {description: Created, content: {application/json: {schema: {$ref: "#/components/schemas/Subject"}}}}
+        "400": {$ref: "#/components/responses/Error"}
+  /v1/courses/{id}:
+    parameters: [{$ref: "#/components/parameters/Id"}]
+    get:
+      summary: Get a course
+      responses:
+        "200": {description: Course, content: {application/json: {schema: {$ref: "#/components/schemas/Subject"}}}}
+        "404": {$ref: "#/components/responses/Error"}
+    patch:
+      summary: Edit a course
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: "#/components/schemas/SubjectCreate"}}}
+      responses:
+        "200": {description: Updated, content: {application/json: {schema: {$ref: "#/components/schemas/Subject"}}}}
+        "400": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+    delete:
+      summary: Archive a course. It is hidden; its history stays.
+      responses:
+        "204": {description: Archived}
+        "404": {$ref: "#/components/responses/Error"}
+  /v1/courses/{id}/view:
+    get:
+      summary: Course screen. Notes with status, study cards, Mistakes.
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200": {description: Course view, content: {application/json: {schema: {$ref: "#/components/schemas/CourseView"}}}}
+        "404": {$ref: "#/components/responses/Error"}
+  /v1/courses/{id}/concepts:
+    post:
+      summary: Add a concept to a course
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, required: [name], properties: {name: {type: string, minLength: 1}}}}}
+      responses:
+        "201": {description: Created, content: {application/json: {schema: {$ref: "#/components/schemas/Concept"}}}}
+        "400": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+  /v1/courses/{id}/blocks:
+    get:
+      summary: Blocks from Ready pages. The only text a claim or correction can quote.
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200": {description: Blocks, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/SourceBlock"}}}}}
+        "404": {$ref: "#/components/responses/Error"}
+  /v1/courses/{id}/uploads:
+    parameters: [{$ref: "#/components/parameters/Id"}]
+    get:
+      summary: List the course's uploads with status
+      responses:
+        "200": {description: Uploads, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Upload"}}}}}
+        "404": {$ref: "#/components/responses/Error"}
+    post:
+      summary: Upload a PDF (at most 20 MB) or paste text. Reading runs in the background.
+      description: Send either `file` or `text`, not both. Poll the upload until status is not reading.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [filename]
+              properties:
+                filename: {type: string}
+                file: {type: string, format: binary, description: A PDF}
+                text: {type: string, description: "Pasted notes, read as one page"}
+      responses:
+        "202": {description: "Stored, status reading", content: {application/json: {schema: {$ref: "#/components/schemas/Upload"}}}}
+        "400": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+  /v1/uploads/{id}:
+    get:
+      summary: Get an upload and its status
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200": {description: Upload, content: {application/json: {schema: {$ref: "#/components/schemas/Upload"}}}}
+        "404": {$ref: "#/components/responses/Error"}
+  /v1/uploads/{id}/pages:
+    get:
+      summary: List an upload's pages in order
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200": {description: Pages, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Page"}}}}}
+        "404": {$ref: "#/components/responses/Error"}
+  /v1/pages/{id}:
+    parameters: [{$ref: "#/components/parameters/Id"}]
+    get:
+      summary: Get a page
+      responses:
+        "200": {description: Page, content: {application/json: {schema: {$ref: "#/components/schemas/Page"}}}}
+        "404": {$ref: "#/components/responses/Error"}
+    patch:
+      summary: Save the checked text of a page
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, required: [edited_text], properties: {edited_text: {type: string}}}}}
+      responses:
+        "200": {description: Page, content: {application/json: {schema: {$ref: "#/components/schemas/Page"}}}}
+        "404": {$ref: "#/components/responses/Error"}
+  /v1/pages/{id}/image:
+    get:
+      summary: The page as a PNG
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200": {description: PNG, content: {image/png: {schema: {type: string, format: binary}}}}
+        "404": {$ref: "#/components/responses/Error"}
+  /v1/pages/{id}/ready:
+    post:
+      summary: Mark the page Ready. Its checked text becomes quotable source blocks.
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200": {description: Page, content: {application/json: {schema: {$ref: "#/components/schemas/Page"}}}}
+        "404": {$ref: "#/components/responses/Error"}
+  /v1/pages/{id}/unready:
+    post:
+      summary: Mark the page as needing checks again. Removes its blocks.
+      description: Refused (400) while a claim quotes this page.
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200": {description: Page, content: {application/json: {schema: {$ref: "#/components/schemas/Page"}}}}
+        "400": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+  /v1/concepts/{id}/claims:
+    parameters: [{$ref: "#/components/parameters/Id"}]
+    get:
+      summary: The concept's claim checklist
+      responses:
+        "200": {description: Claims, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Claim"}}}}}
+        "404": {$ref: "#/components/responses/Error"}
+    post:
+      summary: Add a claim anchored to an exact quote from a Ready page
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: "#/components/schemas/ClaimInput"}}}
+      responses:
+        "201": {description: Created, content: {application/json: {schema: {$ref: "#/components/schemas/Claim"}}}}
+        "400": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+  /v1/claims/{id}:
+    parameters: [{$ref: "#/components/parameters/Id"}]
+    patch:
+      summary: Edit a claim. The anchor is checked again.
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: "#/components/schemas/ClaimInput"}}}
+      responses:
+        "200": {description: Updated, content: {application/json: {schema: {$ref: "#/components/schemas/Claim"}}}}
+        "400": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+    delete:
+      summary: Remove a claim from the checklist. Past reports keep it.
+      responses:
+        "204": {description: Removed}
+        "404": {$ref: "#/components/responses/Error"}
+  /v1/teach/sessions/{id}/self-grades:
+    post:
+      summary: Save how the student feels per claim. Changes no review date.
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [grades]
+              properties:
+                grades:
+                  type: array
+                  items: {type: object, required: [claim_id, rating], properties: {claim_id: {type: string}, rating: {$ref: "#/components/schemas/SelfRating"}}}
+      responses:
+        "204": {description: Saved}
+        "400": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+  /v1/teach/sessions/{id}/disputes:
+    post:
+      summary: "\"I think this check is wrong.\" Saved for a person to read. The date stays as shown."
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, properties: {claim_id: {type: string, nullable: true}, note: {type: string}}}}}
+      responses:
+        "201": {description: Saved, content: {application/json: {schema: {$ref: "#/components/schemas/Dispute"}}}}
+        "404": {$ref: "#/components/responses/Error"}
+  /v1/today:
+    get:
+      summary: Today queue per course, with minutes and Study Time
+      responses:
+        "200": {description: Today, content: {application/json: {schema: {$ref: "#/components/schemas/Today"}}}}
+        "401": {$ref: "#/components/responses/Error"}
+  /v1/week:
+    get:
+      summary: Week plan. Hours per course, day by day items, notes.
+      parameters:
+        - {name: week, in: query, required: true, description: Monday of the week, schema: {type: string, format: date}}
+      responses:
+        "200": {description: Week plan, content: {application/json: {schema: {$ref: "#/components/schemas/WeekPlan"}}}}
+        "400": {$ref: "#/components/responses/Error"}
 components:
+  securitySchemes:
+    session: {type: apiKey, in: cookie, name: session}
   parameters:
     Id: {name: id, in: path, required: true, schema: {type: string}}
   responses:
@@ -208,6 +449,9 @@ components:
         source_id: {type: string}
         locator: {type: string}
         required: {type: boolean}
+        kind: {$ref: "#/components/schemas/ClaimKind"}
+        author_user_id: {type: string}
+        anchor: {$ref: "#/components/schemas/Anchor"}
     Concept:
       type: object
       required: [id, subject_id, name, claims]
@@ -343,3 +587,161 @@ components:
               subject_name: {type: string}
               due_count: {type: integer}
               minutes: {type: integer}
+    User:
+      type: object
+      required: [id, name, time_zone]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        time_zone: {type: string, description: IANA zone name}
+    UploadStatus: {type: string, enum: [reading, needs_checking, ready]}
+    PageStatus: {type: string, enum: [needs_checking, ready]}
+    BlockKind: {type: string, enum: [text, math, heading, figure]}
+    Upload:
+      type: object
+      required: [id, subject_id, filename, status, error, source_id, pages_total, pages_ready, created_at]
+      properties:
+        id: {type: string}
+        subject_id: {type: string}
+        filename: {type: string}
+        status: {$ref: "#/components/schemas/UploadStatus"}
+        error: {type: string, description: "Plain words when reading failed, else empty"}
+        source_id: {type: string, nullable: true, description: The course source Ready pages feed}
+        pages_total: {type: integer}
+        pages_ready: {type: integer}
+        created_at: {type: string, format: date-time}
+    Page:
+      type: object
+      required: [id, upload_id, number, raw_text, edited_text, status, has_image, updated_at]
+      properties:
+        id: {type: string}
+        upload_id: {type: string}
+        number: {type: integer, minimum: 1}
+        raw_text: {type: string}
+        edited_text: {type: string}
+        status: {$ref: "#/components/schemas/PageStatus"}
+        has_image: {type: boolean}
+        updated_at: {type: string, format: date-time}
+    SourceBlock:
+      type: object
+      required: [id, source_id, page, ordinal, kind, text_md, text_norm]
+      properties:
+        id: {type: string}
+        source_id: {type: string}
+        page: {type: integer, nullable: true}
+        ordinal: {type: integer}
+        kind: {$ref: "#/components/schemas/BlockKind"}
+        text_md: {type: string}
+        text_norm: {type: string}
+        verified_by: {type: string}
+        verified_at: {type: string, format: date-time}
+    ClaimKind: {type: string, enum: [definition, statement, condition, method]}
+    Anchor:
+      type: object
+      required: [block_id, quote]
+      properties:
+        block_id: {type: string}
+        quote: {type: string, description: "Exact text from a Ready block, verified by internal/cite"}
+    ClaimInput:
+      type: object
+      required: [text, kind, required, anchor]
+      properties:
+        text: {type: string, minLength: 1}
+        kind: {$ref: "#/components/schemas/ClaimKind"}
+        required: {type: boolean}
+        anchor: {$ref: "#/components/schemas/Anchor"}
+    SelfRating: {type: string, enum: [right, not_sure, wrong]}
+    DisputeStatus: {type: string, enum: [open, reviewed]}
+    Dispute:
+      type: object
+      required: [id, session_id, claim_id, user_id, note, status, created_at]
+      properties:
+        id: {type: string}
+        session_id: {type: string}
+        claim_id: {type: string, nullable: true}
+        user_id: {type: string}
+        note: {type: string}
+        status: {$ref: "#/components/schemas/DisputeStatus"}
+        created_at: {type: string, format: date-time}
+    TodayKind: {type: string, enum: [teach, recall]}
+    TodayItem:
+      type: object
+      required: [concept_id, concept_name, subject_id, kind, minutes, due_at, reason]
+      properties:
+        concept_id: {type: string}
+        concept_name: {type: string}
+        subject_id: {type: string}
+        kind: {$ref: "#/components/schemas/TodayKind"}
+        minutes: {type: integer, description: "teach 15, recall 5"}
+        due_at: {type: string, format: date-time}
+        reason: {type: string}
+    CourseHours:
+      type: object
+      required: [subject_id, name, hours_used, hours_budget, reason]
+      properties:
+        subject_id: {type: string}
+        name: {type: string}
+        hours_used: {type: number}
+        hours_budget: {type: number}
+        reason: {type: string, description: "Empty unless the budget changed, e.g. \"Up 1.5 h: 3 gaps on Monday\""}
+    TodayCourse:
+      type: object
+      required: [subject_id, name, minutes, items]
+      properties:
+        subject_id: {type: string}
+        name: {type: string}
+        minutes: {type: integer}
+        items: {type: array, items: {$ref: "#/components/schemas/TodayItem"}}
+    Today:
+      type: object
+      required: [date, courses, study_time]
+      properties:
+        date: {type: string, format: date-time, description: "Start of the user's local day"}
+        courses: {type: array, items: {$ref: "#/components/schemas/TodayCourse"}}
+        study_time: {type: array, items: {$ref: "#/components/schemas/CourseHours"}}
+    WeekDay:
+      type: object
+      required: [date, items]
+      properties:
+        date: {type: string, format: date-time}
+        items: {type: array, items: {$ref: "#/components/schemas/TodayItem"}}
+    WeekPlan:
+      type: object
+      required: [week_start, courses, days, notes]
+      properties:
+        week_start: {type: string, format: date-time}
+        courses: {type: array, items: {$ref: "#/components/schemas/CourseHours"}}
+        days: {type: array, items: {$ref: "#/components/schemas/WeekDay"}}
+        notes: {type: array, items: {type: string}}
+    StudyCard:
+      type: object
+      required: [concept_id, name, recall, explanation, next_due, claims]
+      properties:
+        concept_id: {type: string}
+        name: {type: string}
+        recall: {type: number, nullable: true}
+        explanation: {type: number, nullable: true}
+        next_due: {type: string, format: date-time, nullable: true}
+        claims: {type: array, items: {$ref: "#/components/schemas/Claim"}}
+    Mistake:
+      type: object
+      required: [session_id, concept_id, claim_id, student_text, label, quote, source_id, page_id, page, created_at]
+      properties:
+        session_id: {type: string}
+        concept_id: {type: string}
+        claim_id: {type: string, nullable: true}
+        student_text: {type: string}
+        label: {$ref: "#/components/schemas/ClaimLabel"}
+        quote: {type: string}
+        source_id: {type: string}
+        page_id: {type: string, nullable: true}
+        page: {type: integer, nullable: true}
+        created_at: {type: string, format: date-time}
+    CourseView:
+      type: object
+      required: [course, notes, cards, mistakes]
+      properties:
+        course: {$ref: "#/components/schemas/Subject"}
+        notes: {type: array, items: {$ref: "#/components/schemas/Upload"}}
+        cards: {type: array, items: {$ref: "#/components/schemas/StudyCard"}}
+        mistakes: {type: array, items: {$ref: "#/components/schemas/Mistake"}}
