@@ -1,0 +1,3 @@
+Unit P2-PRIVACY, wave 2. Branch `feature/privacy-export`. Model: Sonnet 5.5, high. Labels: `User Story`, `phase-2`, `wave-2`.
+Files: `internal/privacy/`, `internal/store/privacy.go`, `internal/store/privacy_test.go`, `rpi/P2-PRIVACY/`.
+D37, D43: export everything the signed-in user owns (courses, uploads text, pages, claims, sessions, turns, reports, self-grades, disputes, review events, feedback) as one JSON; never another user's rows (test). Delete my account: one transaction, `SET LOCAL app.delete_user`, removes every row of that user (review history included) and their sessions; other users untouched (test). Needs a confirm step in the API (typed course name or "DELETE").

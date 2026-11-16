@@ -283,5 +283,65 @@
       ".github/workflows/",
       "rpi/P1-DEPLOY/"
     ]
+  },
+  "P2-CONTRACT": {
+    "branch": "feature/contract-v4",
+    "allow": [
+      "internal/domain/",
+      "api/",
+      "migrations/",
+      "internal/fakes/",
+      "internal/app/handlers_test.go",
+      "rpi/P2-CONTRACT/"
+    ]
+  },
+  "P2-METRICS": {
+    "branch": "feature/metrics-export",
+    "allow": [
+      "internal/metrics/",
+      "cmd/export/",
+      "rpi/P2-METRICS/"
+    ]
+  },
+  "P2-PRIVACY": {
+    "branch": "feature/privacy-export",
+    "allow": [
+      "internal/privacy/",
+      "internal/store/privacy.go",
+      "internal/store/privacy_test.go",
+      "rpi/P2-PRIVACY/"
+    ]
+  },
+  "P2-IMPORT": {
+    "branch": "feature/csv-import",
+    "allow": [
+      "internal/importer/",
+      "rpi/P2-IMPORT/"
+    ]
+  },
+  "P2-EVAL2": {
+    "branch": "feature/eval-from-disputes",
+    "allow": [
+      "eval/",
+      "cmd/evalcheck/",
+      "scripts/disputes_to_eval.py",
+      "rpi/P2-EVAL2/"
+    ]
+  },
+  "P2-WEB2": {
+    "branch": "feature/web-pilot",
+    "allow": [
+      "web/",
+      "rpi/P2-WEB2/"
+    ]
+  },
+  "P2-API": {
+    "branch": "feature/api-v4",
+    "allow": [
+      "internal/app/",
+      "cmd/api/",
+      "cmd/export/",
+      "rpi/P2-API/"
+    ]
   }
 }
