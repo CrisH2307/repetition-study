@@ -48,6 +48,9 @@ One log. Newest change at the top of each row. On 2026-11-09 Cris and Dino appro
 | D42 | No daily email digest in Phase 2 (Cris on #107). No email service. | Approved (Cris, 2026-11-16) |
 | D43 | Deleting an account removes everything of that user, including their review history (Cris on #107, option a). This is the one exception to the append-only review log: only a single delete-account code path may remove review_events rows, and only all rows of one user at once; the trigger still rejects every other update or delete. | Approved (Cris, 2026-11-16) |
 | D44 | Consent and privacy texts are written in plain words and shown to pilot users without a separate legal review (Cris on #107: "people can have access"). Read as: no named reviewer; Cris corrects this row if he meant something else. | Approved (Cris, 2026-11-16), wording unverified |
+| D45 | Hosting: Vercel serves the web app (Cris, 2026-11-16). The Go API (SSE, background PDF reading with poppler) runs as the Docker image on a container host behind Vercel rewrites of `/v1/*`, so the cookie stays same-origin. The container host is still open. | Approved (Cris), API host open |
+| D46 | Sign-in stays invite links (D29, D35) for the launch; another method later. Domain later; the Vercel address until then (Cris, 2026-11-16). | Approved (Cris, 2026-11-16) |
+| D47 | Launch first: Phase 1 goes to market after a UI polish pass with the ui-ux-pro-max skill. Polish only: no new features, copy or imagery. Phase 2 waits until the launch build is out. Cris tests in place of Dino for now. | Approved (Cris, 2026-11-16) |
 
 ## Record of changes to earlier decisions
 

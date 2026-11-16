@@ -278,6 +278,7 @@
   "P1-DEPLOY": {
     "branch": "chore/deploy",
     "allow": [
+      "vercel.json",
       "deploy/",
       "docs/DEPLOY.md",
       ".github/workflows/",
@@ -342,6 +343,13 @@
       "cmd/api/",
       "cmd/export/",
       "rpi/P2-API/"
+    ]
+  },
+  "P1-POLISH": {
+    "branch": "feature/ui-polish",
+    "allow": [
+      "web/",
+      "rpi/P1-POLISH/"
     ]
   }
 }
