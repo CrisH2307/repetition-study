@@ -54,9 +54,29 @@ Also needed: the full-loop test green with real models, and Dino finishes 3 real
 
 If G0 fails: one iteration on a separate development split (narrower claims, different checker model). If it still fails, ship self-graded teach-back with checker labels as suggestions that change no schedule, and re-think the thesis before Phase 1.
 
-## After Phase 0
+## Phase 1: MVP for Dino and classmates (started 2026-11-16)
 
-Phase 1 (MVP for Dino and classmates): upload and verified transcription, claim checklist, accounts, Today queue, four-screen web app, deployment. Pilot, then launch for fall 2027 follow the review, sections 5 and 6, with gates G1 to G3. Not planned in detail until G0 is known.
+Goal: five or more students upload their own notes for a quantitative course, check the transcription, list the key claims, teach back, and follow a Today queue on a deployed site, without Cris touching the database. Gate G0 is met on GPT 6 Luna (run 2), so checked reports may change schedules. Decisions D26 to D34. Main agent plan: `rpi/P1-MAIN/plan.md`.
+
+Not in Phase 1: billing, voice, digest, timed calendar blocks, claim-level schedules (D4 stays approved, it comes after the pilot starts), model-made transcription or claim proposals (paid, needs Cris).
+
+Labels: one type label, `phase-1` and `wave-N`. Each unit has `rpi/<unit>/PROMPT.md` and a `.claude/boundaries.json` entry.
+
+| Wave | Unit | Branch | Work | Needs |
+| --- | --- | --- | --- | --- |
+| 1 | P1-CONTRACT | `feature/contract-v3` | Users and sign-in sessions, uploads and pages, claim checklist, self-grades, disputes, Today and week plan, course view; OpenAPI for all of it | nothing |
+| 1 | P1-E2E | `feature/e2e-loop` | UI step 7: Playwright full typed loop against the fake model, in CI | nothing |
+| 1 | P1-IMAGE | `chore/docker-image` | One Docker image: API plus built web app plus poppler; compose for a production-like run | nothing |
+| 2 | P1-STORE | `feature/pg-store-v3` | Postgres for the new tables, every query scoped to one user | P1-CONTRACT |
+| 2 | P1-COURSE | `feature/course-notes` | PDF to pages (pdftotext, pdftoppm), page check, Ready pages become source blocks, claim anchors verified by `internal/cite` | P1-CONTRACT |
+| 2 | P1-AUTH | `feature/invite-auth` | Invite links, session cookies, middleware, `cmd/invite` | P1-CONTRACT |
+| 2 | P1-TODAY | `feature/today-queue` | Today queue and week plan with minutes and a reason for every number | P1-CONTRACT |
+| 3 | P1-API | `feature/api-v3` | Handlers and wiring for all of the above, isolation test, dispute export | wave 2 |
+| 3 | P1-WEB | `feature/web-app` | Four screens (Today, Teach, Course, Week) plus sign-in, upload and claim checklist; UI steps 5 and 6 | P1-CONTRACT |
+| 4 | P1-DEPLOY | `chore/deploy` | Deploy to the host Cris picks, backups, restore test | Cris's answers, wave 3 |
+| 4 | P1-QA | test issue | Dino tests the deployed site | P1-DEPLOY |
+
+Gate G1 (review section 5) is measured during the pilot, after Phase 1 ships.
 
 ## Cut order if time runs short
 
@@ -64,4 +84,4 @@ Voice input, digest, timed blocks, extra screens. Never cut the citation fix, th
 
 ## Open
 
-D16 (name) and D18 (hours each of you can give). Spend approval for the real model runs. A verified price for the student model in `internal/llm/models.json`, which `evalcheck` needs before it will run with a cap.
+D16 (name) and D18 (hours each of you can give). For Phase 1: host, sign-in method, domain and the pilot model budget (one question to Cris, see `rpi/P1-MAIN/plan.md`).
