@@ -1,6 +1,6 @@
 # Deploy (P1-DEPLOY)
 
-Shape (D32): Vercel serves the web app. The API runs as the Docker image from `Dockerfile` on a container host you have not picked yet. Vercel forwards `/v1/*` and `/healthz` to the API, so the sign-in cookie stays on one site.
+Shape (D32): Vercel serves the web app. The API runs as the Docker image from `Dockerfile` on Fly.io (Toronto). Vercel forwards `/v1/*` and `/healthz` to the API, so the sign-in cookie stays on one site.
 
 Nothing here costs money until you click a paid button. Never paste secrets into git.
 
@@ -16,32 +16,33 @@ Project must be new (created after 2026-04-06) or caching of proxied replies may
 1. Vercel, Add New Project, import `CrisH2307/repetition-study`.
 2. Root Directory: leave as the repo root. Framework Preset: Other. `vercel.json` sets build and output.
 3. Production branch: `main`. (Vercel previews qa if you want.)
-4. In `vercel.json`, replace `API_ORIGIN_PLACEHOLDER` (twice) with the API host name, e.g. `api-xyz.example.com`, then commit via a PR. No env vars are needed on Vercel.
+4. In `vercel.json` the API address is `space-repetition-api.fly.dev`; change it only if you rename the Fly app.
 5. Deploy. Open the Vercel URL. `/healthz` should say ok.
 
-## B. API container
+## B. API on Fly.io (Toronto)
 
-Any host that runs a Docker image and gives HTTPS. Pick a **Canadian region** (D17). Database: managed Postgres in the same region.
+Files: `fly.toml` (app `space-repetition-api`, region `yyz`, port 8080, `/healthz` check, release command `migrate`, one machine always on). If the app name is taken, change `app` in `fly.toml` and the two `fly.dev` addresses in `vercel.json`.
 
-Set these on the host (names only, you type the values):
-`DATABASE_URL`, `COOKIE_SECURE` (leave unset; it must stay true), `APP_URL` (the Vercel site address), `STUDENT_MODEL`, `CHECKER_MODEL`, `OPENROUTER_API_KEY`, `MONTHLY_CAP_USD`.
-`PORT` is 8080 by default.
+Verified in Fly docs (2026-11-16): `yyz` is Toronto and can host Managed Postgres; the release command runs `migrate` in a temporary machine with the new image and secrets, and a failure stops the deploy; Fly's old unmanaged Postgres is no longer maintained, so use **Managed Postgres**.
+Unverified: Managed Postgres backup length and restore commands (docs show only "automatic backups"), prices in `yyz`, how long Fly keeps a live stream open (docs list an idle timeout setting, no default).
+Cost: Fly is paid. Managed Postgres plans start at about $38/month (Basic) plus storage per Fly's page; an always-on machine is also billed (amount unverified). Nothing here is started for you.
 
-Start command (applies new tables, then starts the API; same as `compose.yaml`):
+1. Install `flyctl` and sign in yourself (`fly auth login`). You create the account.
+2. From the repo root: `fly launch --no-deploy --copy-config` and keep the existing `fly.toml` and region `yyz`. Say No to any Postgres offer here.
+3. Database: `fly mpg create`, choose region `yyz`. Then attach it to the app with the Fly steps it prints, which give you a `DATABASE_URL`.
+4. Secrets (you type the values, never paste into git):
+   `fly secrets set DATABASE_URL=... APP_URL=https://<your-vercel-address> OPENROUTER_API_KEY=... STUDENT_MODEL=... CHECKER_MODEL=... MONTHLY_CAP_USD=...`
+   `COOKIE_SECURE` is already `true` in `fly.toml`.
+5. `fly deploy`. The tables are created by the release command before the new version starts.
+6. Check: `https://space-repetition-api.fly.dev/healthz` answers ok.
 
-```
-sh -c "migrate && exec api"
-```
+## C. Backups and one restore test
 
-Check: `https://<api-host>/healthz` answers ok.
-
-## C. Daily backup and one restore test
-
-1. Schedule `deploy/backup.sh` once a day (host's scheduler, or turn on the managed database's daily backup if it has one). Store copies in a Canadian region.
-2. Restore test, once, before real students: create an empty scratch database, then
+1. Fly Managed Postgres says it takes automatic backups. Ask Fly (or read the Managed Postgres backup page) how long it keeps them and write it here: ______ (unverified).
+2. Your own copy as well: run `deploy/backup.sh` once a day with `DATABASE_URL` set (needs `pg_dump`; to reach the database from your laptop use the connection step Fly prints, unverified). Keep the file somewhere in Canada.
+3. Restore test, once, before real students: make an empty scratch database (a second `fly mpg create` cluster costs money, so delete it right after, or use a local Postgres), then
    `RESTORE_URL=<scratch url> deploy/restore-test.sh backup-<date>.dump`.
-3. Pass: no errors, and the number is not 0. On failure copy the output to Cris and stop.
-4. Delete the scratch database after.
+4. Pass: no errors, and the number is not 0. On failure copy the output to Cris and stop.
 
 ## D. First invite
 
