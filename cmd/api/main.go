@@ -33,6 +33,9 @@ func main() {
 		port = "8080"
 	}
 	srv.Addr = ":" + port
+	if dir := os.Getenv("WEB_DIR"); dir != "" {
+		srv.Handler = withWeb(srv.Handler, dir)
+	}
 	go func() {
 		<-ctx.Done()
 		sctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
