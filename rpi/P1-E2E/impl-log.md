@@ -1,0 +1,1 @@
+- Added Playwright, 2 tests, e2e.yml. Local run: 2 passed against a fresh e2e DB; vitest still 5 passed.
