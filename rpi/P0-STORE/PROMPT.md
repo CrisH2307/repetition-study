@@ -1,4 +1,4 @@
-Unit P0-STORE, wave 1, after P0-CONTRACT is on integration/p0. Branch `feature/pg-store`. Model: Sonnet 5.5, effort medium.
+Unit P0-STORE, wave 1, after P0-CONTRACT is merged into qa. Branch `feature/pg-store`. Model: Sonnet 5.5, effort medium.
 Files: `internal/store/`, `rpi/P0-STORE/`.
 Read first: `docs/improved/strategy-review-fable.md` section 4.2 (F3, F4), `internal/domain/` (the new `TeachStore` and `Pack` types), `internal/teach/store.go`, `migrations/`.
 
@@ -12,4 +12,6 @@ Steps
 5. Same conformance test suite runs against `MemStore` and the Postgres store.
 
 Done when: a test starts a session, restarts the store, and Finish still works; `claim_labels` rows exist after Finish; `go test -race ./internal/store/...` is green after `make up migrate`.
-Do not open a PR. Push the branch and stop. Report under 200 words.
+Push the branch, then open a PR into qa with `gh pr create --base qa` (body: "Closes #<issue>", tests run, what is unverified). Never merge. Stop. Report under 200 words.
+
+Contract note (from the P0-CONTRACT report, PR #28): implement `domain.TeachStore` and `domain.PackLoader.LoadPack`. `Pack` includes `Subject`, `SourceBlock`s and concepts with claims. Source blocks go in the new table `source_blocks` (migration 0003).

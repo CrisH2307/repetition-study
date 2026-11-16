@@ -2,6 +2,7 @@ package srs
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -11,11 +12,12 @@ import (
 
 	"github.com/CrisH2307/repetition-study/internal/domain"
 	"github.com/CrisH2307/repetition-study/internal/fakes"
+	"github.com/CrisH2307/repetition-study/migrations"
 )
 
-// Tests need Postgres with migrations applied (make up migrate). They skip
-// without DATABASE_URL. review_events is append-only, so test rows are never
-// deleted; every test makes its own concept.
+// Tests need a running Postgres (DATABASE_URL). Each test creates a throwaway
+// database on that server, applies every migration to it and drops it at the
+// end, so the dev database gains no rows. They skip without DATABASE_URL.
 type env struct {
 	t     *testing.T
 	ctx   context.Context
@@ -30,16 +32,56 @@ func newEnv(t *testing.T) *env {
 		t.Skip("DATABASE_URL not set")
 	}
 	ctx := context.Background()
-	conn, err := pgx.Connect(ctx, url)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { conn.Close(ctx) })
+	conn := throwawayDB(t, ctx, url)
 	if _, err := conn.Exec(ctx, `INSERT INTO users (id, name) VALUES ($1, 'demo') ON CONFLICT DO NOTHING`, domain.DemoUserID); err != nil {
 		t.Fatal(err)
 	}
 	clock := fakes.NewClock()
 	return &env{t, ctx, conn, clock, New(conn, clock)}
+}
+
+// throwawayDB makes an empty database on the server in url, migrates it and
+// drops it when the test ends.
+func throwawayDB(t *testing.T, ctx context.Context, url string) *pgx.Conn {
+	cfg, err := pgx.ParseConfig(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin, err := pgx.ConnectConfig(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := "srs_test_" + strings.ReplaceAll(fmt.Sprint(time.Now().UnixNano()), "-", "")
+	if _, err := admin.Exec(ctx, "CREATE DATABASE "+name); err != nil {
+		admin.Close(ctx)
+		t.Fatal(err)
+	}
+	cfg.Database = name
+	conn, err := pgx.ConnectConfig(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		conn.Close(ctx)
+		if _, err := admin.Exec(ctx, "DROP DATABASE "+name+" WITH (FORCE)"); err != nil {
+			t.Errorf("drop %s: %v", name, err)
+		}
+		admin.Close(ctx)
+	})
+	files, err := migrations.FS.ReadDir(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range files { // ReadDir is sorted by name
+		if !strings.HasSuffix(f.Name(), ".sql") {
+			continue
+		}
+		b, _ := migrations.FS.ReadFile(f.Name())
+		if _, err := conn.Exec(ctx, string(b)); err != nil {
+			t.Fatalf("%s: %v", f.Name(), err)
+		}
+	}
+	return conn
 }
 
 func (e *env) q(sql string, args ...any) string {
@@ -269,6 +311,11 @@ func TestDueReasonsAndInterleave(t *testing.T) {
 	if err != nil || len(plain) != len(got) {
 		t.Errorf("Due returned %d, DueWithReasons %d (%v)", len(plain), len(got), err)
 	}
+	for i, d := range plain {
+		if d.Reason == "" {
+			t.Errorf("Due item %d has an empty reason", i)
+		}
+	}
 }
 
 func TestReviewCardMovesConceptSchedule(t *testing.T) {
@@ -285,5 +332,173 @@ func TestReviewCardMovesConceptSchedule(t *testing.T) {
 	}
 	if ev.EventType != domain.EventCardReview || ev.CardID == nil || *ev.CardID != card || *ev.Grade != domain.GradeEasy {
 		t.Errorf("bad event %+v", ev)
+	}
+}
+
+// Finish retried after a restart: a brand new Scheduler (and clock) applies the
+// same session again and must get the first event back.
+func TestTeachBackSessionIsIdempotent(t *testing.T) {
+	e := newEnv(t)
+	id, r1, _, _ := e.concept()
+	sess := e.q(`INSERT INTO teach_sessions (concept_id) VALUES ($1) RETURNING id`, id)
+	res := []domain.ClaimResult{lbl(r1, domain.LabelContradicted)}
+	first, err := e.s.ApplyTeachBackSession(e.ctx, sess, id, res)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.SessionID == nil || *first.SessionID != sess {
+		t.Errorf("event session id %v, want %s", first.SessionID, sess)
+	}
+	restarted := New(e.conn, fakes.NewClock())
+	restarted.clock.(*fakes.Clock).Advance(48 * time.Hour)
+	again, err := restarted.ApplyTeachBackSession(e.ctx, sess, id, res)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.ID != first.ID || !again.DueAfter.Equal(first.DueAfter) {
+		t.Errorf("retry returned another event: %+v vs %+v", again, first)
+	}
+	if n := e.eventCount(id); n != 1 {
+		t.Errorf("%d events, want 1", n)
+	}
+	if n := e.cardCount(id); n != 1 {
+		t.Errorf("%d cards, want 1", n)
+	}
+	// A different session on the same concept is a new teach-back.
+	sess2 := e.q(`INSERT INTO teach_sessions (concept_id) VALUES ($1) RETURNING id`, id)
+	if _, err := e.s.ApplyTeachBackSession(e.ctx, sess2, id, res); err != nil {
+		t.Fatal(err)
+	}
+	if n := e.eventCount(id); n != 2 {
+		t.Errorf("%d events, want 2", n)
+	}
+	if _, err := e.s.ApplyTeachBackSession(e.ctx, "", id, res); err == nil {
+		t.Error("empty session id should fail")
+	}
+}
+
+func TestTeachBackSessionConcurrentRetries(t *testing.T) {
+	e := newEnv(t)
+	id, r1, _, _ := e.concept()
+	sess := e.q(`INSERT INTO teach_sessions (concept_id) VALUES ($1) RETURNING id`, id)
+	url := os.Getenv("DATABASE_URL")
+	cfg, _ := pgx.ParseConfig(url)
+	cfg.Database = e.conn.Config().Database
+	ids := make(chan string, 4)
+	for i := 0; i < 4; i++ {
+		go func() {
+			c, err := pgx.ConnectConfig(e.ctx, cfg)
+			if err != nil {
+				ids <- "err " + err.Error()
+				return
+			}
+			defer c.Close(e.ctx)
+			ev, err := New(c, e.clock).ApplyTeachBackSession(e.ctx, sess, id, []domain.ClaimResult{lbl(r1, domain.LabelContradicted)})
+			if err != nil {
+				ids <- "err " + err.Error()
+				return
+			}
+			ids <- ev.ID
+		}()
+	}
+	seen := map[string]bool{}
+	for i := 0; i < 4; i++ {
+		seen[<-ids] = true
+	}
+	if len(seen) != 1 || e.eventCount(id) != 1 {
+		t.Errorf("want one event, got ids %v and %d rows", seen, e.eventCount(id))
+	}
+}
+
+func TestReviewEventsStayAppendOnly(t *testing.T) {
+	e := newEnv(t)
+	id, r1, _, _ := e.concept()
+	if _, err := e.s.ApplyTeachBack(e.ctx, id, []domain.ClaimResult{lbl(r1, domain.LabelSupported)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.conn.Exec(e.ctx, `UPDATE review_events SET grade = 'easy' WHERE concept_id = $1`, id); err == nil {
+		t.Error("update on review_events should be rejected")
+	}
+	if _, err := e.conn.Exec(e.ctx, `DELETE FROM review_events WHERE concept_id = $1`, id); err == nil {
+		t.Error("delete on review_events should be rejected")
+	}
+}
+
+func (e *env) rowCount(table string) (n int) {
+	if err := e.conn.QueryRow(e.ctx, `SELECT count(*) FROM `+table).Scan(&n); err != nil {
+		e.t.Fatal(err)
+	}
+	return n
+}
+
+func TestNeverScheduledConceptIsDueAfterOverdue(t *testing.T) {
+	e := newEnv(t)
+	overdue, o1, _, _ := e.concept()
+	fresh, _, _, _ := e.concept()
+	if _, err := e.s.ApplyTeachBack(e.ctx, overdue, []domain.ClaimResult{lbl(o1, domain.LabelContradicted)}); err != nil {
+		t.Fatal(err)
+	}
+	e.clock.Advance(48 * time.Hour)
+	events, schedules := e.rowCount("review_events"), e.rowCount("concept_schedules")
+	got, err := e.s.DueWithReasons(e.ctx, e.clock.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain, err := e.s.Due(e.ctx, e.clock.Now())
+	if err != nil || len(plain) != len(got) {
+		t.Fatalf("Due returned %d, DueWithReasons %d (%v)", len(plain), len(got), err)
+	}
+	iNew, iOverdue := -1, -1
+	for i, d := range got {
+		if d.CardID != nil {
+			continue
+		}
+		switch d.ConceptID {
+		case fresh:
+			iNew = i
+			if d.Reason != "New topic: not taught yet" || !d.DueAt.Equal(e.clock.Now().UTC()) || d.ConceptName == "" {
+				t.Errorf("new item %+v", d)
+			}
+		case overdue:
+			iOverdue = i
+		}
+	}
+	if iNew < 0 || iOverdue < 0 || iNew < iOverdue {
+		t.Errorf("new concept at %d, overdue at %d; want both present, overdue first", iNew, iOverdue)
+	}
+	if iNew >= 0 && plain[iNew].Reason == "" {
+		t.Error("Due dropped the reason")
+	}
+	if n := e.rowCount("review_events"); n != events {
+		t.Errorf("listing wrote events: %d -> %d", events, n)
+	}
+	if n := e.rowCount("concept_schedules"); n != schedules {
+		t.Errorf("listing wrote schedules: %d -> %d", schedules, n)
+	}
+}
+
+func TestFinishOnNeverScheduledConcept(t *testing.T) {
+	e := newEnv(t)
+	id, r1, _, _ := e.concept()
+	sess := e.q(`INSERT INTO teach_sessions (concept_id) VALUES ($1) RETURNING id`, id)
+	if _, err := e.s.ApplyTeachBackSession(e.ctx, sess, id, []domain.ClaimResult{lbl(r1, domain.LabelSupported)}); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err := e.conn.QueryRow(e.ctx, `SELECT count(*) FROM review_events WHERE concept_id = $1 AND event_type = 'teach_back'`, id).Scan(&n); err != nil || n != 1 || e.eventCount(id) != 1 {
+		t.Errorf("teach_back events %d, all events %d (%v), want exactly 1", n, e.eventCount(id), err)
+	}
+	if err := e.conn.QueryRow(e.ctx, `SELECT count(*) FROM concept_schedules WHERE concept_id = $1`, id).Scan(&n); err != nil || n != 1 {
+		t.Errorf("%d schedule rows, want 1 (%v)", n, err)
+	}
+	// Now scheduled, so it is no longer listed as new.
+	got, err := e.s.DueWithReasons(e.ctx, e.clock.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range got {
+		if d.ConceptID == id && d.Reason == "New topic: not taught yet" {
+			t.Errorf("taught concept still listed as new: %+v", d)
+		}
 	}
 }

@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Space Repetition API
-  version: 0.1.0
+  version: 0.2.0
   description: >
     The contract every unit builds against. Schemas mirror internal/domain.
     No auth today: every request acts as the seeded demo user.
@@ -104,6 +104,8 @@ paths:
   /v1/teach/sessions/{id}/report:
     get:
       summary: Get the cited report after the attempt
+      description: >
+        status is unchecked when the checker failed. Then schedule is null and no review date moved.
       parameters: [{$ref: "#/components/parameters/Id"}]
       responses:
         "200": {description: Report, content: {application/json: {schema: {$ref: "#/components/schemas/Report"}}}}
@@ -169,6 +171,7 @@ components:
     SourceKind: {type: string, enum: [course, allowlist]}
     Level: {type: string, enum: [beginner, intermediate, advanced]}
     PlanKind: {type: string, enum: [review, teach, new]}
+    ReportStatus: {type: string, enum: [checked, unchecked]}
     Source:
       type: object
       required: [id, kind, title, text]
@@ -218,7 +221,7 @@ components:
       required: [source_id, quote, locator]
       properties:
         source_id: {type: string}
-        quote: {type: string, description: Exact substring of the approved source text, verified by code}
+        quote: {type: string, description: "Exact substring of the approved source text, verified by code"}
         locator: {type: string}
     ClaimResult:
       type: object
@@ -232,7 +235,7 @@ components:
         probe_hint: {type: string, nullable: true, description: Never contains source text}
     ReviewEvent:
       type: object
-      required: [id, event_type, concept_id, card_id, grade, due_before, due_after, stability_before, stability_after, payload, created_at]
+      required: [id, event_type, concept_id, card_id, grade, due_before, due_after, stability_before, stability_after, payload, created_at, session_id, claim_id, self_grade, checker_model, checker_version]
       properties:
         id: {type: string}
         event_type: {$ref: "#/components/schemas/EventType"}
@@ -245,6 +248,11 @@ components:
         stability_after: {type: number}
         payload: {type: object, additionalProperties: true}
         created_at: {type: string, format: date-time}
+        session_id: {type: string, nullable: true, description: Set on teach_back. One session writes one teach_back event}
+        claim_id: {type: string, nullable: true}
+        self_grade: {allOf: [{$ref: "#/components/schemas/Grade"}], nullable: true}
+        checker_model: {type: string, nullable: true}
+        checker_version: {type: string, nullable: true}
     PlanBlock:
       type: object
       required: [id, subject_id, concept_id, kind, starts_at, minutes, reason, locked]
@@ -274,13 +282,14 @@ components:
         back: {type: string}
     DueItem:
       type: object
-      required: [concept_id, concept_name, card_id, card, due_at]
+      required: [concept_id, concept_name, card_id, card, due_at, reason]
       properties:
         concept_id: {type: string}
         concept_name: {type: string}
         card_id: {type: string, nullable: true}
         card: {allOf: [{$ref: "#/components/schemas/Card"}], nullable: true}
         due_at: {type: string, format: date-time}
+        reason: {type: string, description: "Why the item is due, in plain words"}
     TeachSession:
       type: object
       required: [id, concept_id]
@@ -289,20 +298,21 @@ components:
         concept_id: {type: string}
     Report:
       type: object
-      required: [session_id, concept_id, results, schedule]
+      required: [session_id, concept_id, results, schedule, status]
       properties:
         session_id: {type: string}
         concept_id: {type: string}
         results: {type: array, items: {$ref: "#/components/schemas/ClaimResult"}}
-        schedule: {allOf: [{$ref: "#/components/schemas/ReviewEvent"}], nullable: true, description: The teach_back event, so the date change is visible}
+        schedule: {allOf: [{$ref: "#/components/schemas/ReviewEvent"}], nullable: true, description: "The teach_back event, so the date change is visible"}
+        status: {$ref: "#/components/schemas/ReportStatus"}
     ConceptProgress:
       type: object
       required: [concept_id, name, recall, explanation, next_due]
       properties:
         concept_id: {type: string}
         name: {type: string}
-        recall: {type: number, nullable: true, description: 0 to 1, from card reviews}
-        explanation: {type: number, nullable: true, description: 0 to 1, from teach-backs}
+        recall: {type: number, nullable: true, description: "0 to 1, from card reviews"}
+        explanation: {type: number, nullable: true, description: "0 to 1, from teach-backs"}
         next_due: {type: string, format: date-time, nullable: true}
     SubjectProgress:
       type: object

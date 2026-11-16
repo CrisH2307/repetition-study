@@ -25,8 +25,8 @@ Hard design rules
 - review_events is append-only.
 - Do not claim learning gains anywhere in the product or demo.
 
-Stack: Go backend (net/http, pgx, SSE), Postgres, go-fsrs, Gemini for the
-student, Claude for the checker. Python only in scripts/parse_pdf.py, outside
+Stack: Go backend (net/http, pgx, SSE), Postgres, go-fsrs, GPT 6 Luna via
+OpenRouter for the student and the checker (D22). Python only in scripts/parse_pdf.py, outside
 the request path. React, Vite, TypeScript and KaTeX for the web UI. The "UI
 deferred" rule is lifted for the MVP (see DECISIONS D8).
 
@@ -36,9 +36,15 @@ Working rules
 - Stay inside the file boundary in your prompt. Need a contract change? Stop and
   ask Cris. Never edit internal/domain, api/ or migrations/ from a unit branch.
 - Never commit to main. Branches are feature/<name>, fix/<name>, chore/<name>.
-- Small commits, one function, fix or concern each. Push your branch and stop.
-  Do not open PRs and do not merge. Cris merges into qa and main himself.
-  Commit messages are imperative and explain why when it is not obvious.
+- Flow: GitHub issue, then a branch from qa, then a PR into qa, then Dino tests
+  on qa, then a PR from qa into main. Every unit has an issue. Small commits,
+  one function, fix or concern each. Open your PR with `gh pr create --base qa`
+  (body: "Closes #<issue>", tests run, what is unverified).
+  Label every issue and PR with one type label: `Bug` (something broken),
+  `User Story` (new feature), `Test` (validation), `Doc`, `Issue` (other task) or
+  `question`, plus `phase-0` and its wave label. Use `gh ... --label "User Story"`. Never merge a PR and
+  never push to qa or main. Cris merges. Commit messages are imperative and
+  explain why when it is not obvious.
 - Anything written for Dino is plain language: no jargon, exact steps, what pass
   looks like, and "copy the output to Cris and stop" on failure.
 - Keep rpi/<unit>/research.md, plan.md and impl-log.md short and current.

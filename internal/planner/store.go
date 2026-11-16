@@ -16,6 +16,7 @@ import (
 type DB interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 	Begin(ctx context.Context) (pgx.Tx, error)
 }
 
@@ -54,7 +55,11 @@ func (s *Store) FurtherPlanning(ctx context.Context, weekStart time.Time) (domai
 // Generate replaces this user's unlocked, not yet started blocks for the week.
 // Locked blocks and blocks already in the past stay put and count against weekly_hours.
 func (s *Store) Generate(ctx context.Context, userID string, weekStart time.Time) (domain.Plan, error) {
-	weekStart = weekStart.UTC()
+	cfg, err := s.userConfig(ctx, userID)
+	if err != nil {
+		return domain.Plan{}, err
+	}
+	weekStart = cfg.LocalWeekStart(weekStart)
 	now := s.Clock.Now().UTC()
 	data, err := s.loadSubjects(ctx, userID)
 	if err != nil {
@@ -64,7 +69,7 @@ func (s *Store) Generate(ctx context.Context, userID string, weekStart time.Time
 	if err != nil {
 		return domain.Plan{}, err
 	}
-	al, err := s.Cfg.Allocate(now, weekStart, data, fixed)
+	al, err := cfg.Allocate(now, weekStart, data, fixed)
 	if err != nil {
 		return domain.Plan{}, err
 	}
@@ -102,6 +107,22 @@ func (s *Store) Generate(ctx context.Context, userID string, weekStart time.Time
 		return blocks[i].ID < blocks[j].ID
 	})
 	return domain.Plan{WeekStart: weekStart, Blocks: blocks}, nil
+}
+
+// userConfig returns the store's Config with the user's time zone set.
+// An unknown zone is an error: guessing UTC would put blocks at the wrong hours.
+func (s *Store) userConfig(ctx context.Context, userID string) (Config, error) {
+	var name string
+	if err := s.DB.QueryRow(ctx, `SELECT time_zone FROM users WHERE id = $1`, userID).Scan(&name); err != nil {
+		return Config{}, fmt.Errorf("planner: read time zone: %w", err)
+	}
+	loc, err := time.LoadLocation(name)
+	if err != nil {
+		return Config{}, fmt.Errorf("planner: user time zone %q: %w", name, err)
+	}
+	cfg := s.Cfg
+	cfg.Loc = loc
+	return cfg, nil
 }
 
 // loadFixedBlocks returns the week's blocks the allocator must not touch.

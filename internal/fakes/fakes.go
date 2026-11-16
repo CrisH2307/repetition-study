@@ -22,6 +22,11 @@ var (
 	_ domain.Planner     = (*Planner)(nil)
 	_ domain.Digester    = (*Digester)(nil)
 	_ domain.Clock       = (*Clock)(nil)
+
+	_ domain.ReportReader     = (*TeachEngine)(nil)
+	_ domain.SessionScheduler = (*Scheduler)(nil)
+	_ domain.TeachStore       = (*TeachStore)(nil)
+	_ domain.PackLoader       = (*PackLoader)(nil)
 )
 
 // Epoch is the fixed start time for FakeClock: Monday 2026-11-09 09:00 UTC.
@@ -91,7 +96,8 @@ type TeachEngine struct {
 	mu       sync.Mutex
 	n        int
 	sessions map[string]string // session id -> concept id
-	Report   *domain.Report    // optional canned Finish result
+	reports  map[string]domain.Report
+	Report   *domain.Report // optional canned Finish result
 }
 
 func (t *TeachEngine) Start(_ context.Context, conceptID string) (domain.TeachSession, error) {
@@ -124,10 +130,26 @@ func (t *TeachEngine) Finish(_ context.Context, sessionID string) (domain.Report
 	if !ok {
 		return domain.Report{}, fmt.Errorf("fakes: unknown session %q", sessionID)
 	}
+	r := domain.Report{SessionID: sessionID, ConceptID: concept, Status: domain.ReportChecked}
 	if t.Report != nil {
-		return *t.Report, nil
+		r = *t.Report
 	}
-	return domain.Report{SessionID: sessionID, ConceptID: concept}, nil
+	if t.reports == nil {
+		t.reports = map[string]domain.Report{}
+	}
+	t.reports[sessionID] = r
+	return r, nil
+}
+
+// GetReport returns what Finish returned for the session.
+func (t *TeachEngine) GetReport(_ context.Context, sessionID string) (domain.Report, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	r, ok := t.reports[sessionID]
+	if !ok {
+		return domain.Report{}, fmt.Errorf("fakes: no report for session %q", sessionID)
+	}
+	return r, nil
 }
 
 // Checker returns Results if set, else one supported result per required claim.
@@ -191,6 +213,27 @@ func (s *Scheduler) event(et domain.EventType, concept string, card *string, g *
 func (s *Scheduler) ApplyTeachBack(_ context.Context, conceptID string, results []domain.ClaimResult) (domain.ReviewEvent, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.teachBack(conceptID, results), nil
+}
+
+// ApplyTeachBackSession is ApplyTeachBack keyed by session: a repeat call for
+// the same session returns the first event and appends nothing.
+func (s *Scheduler) ApplyTeachBackSession(_ context.Context, sessionID, conceptID string, results []domain.ClaimResult) (domain.ReviewEvent, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, ev := range s.Events {
+		if ev.EventType == domain.EventTeachBack && ev.SessionID != nil && *ev.SessionID == sessionID {
+			return ev, nil
+		}
+	}
+	ev := s.teachBack(conceptID, results)
+	ev.SessionID = &sessionID
+	s.Events[len(s.Events)-1] = ev
+	return ev, nil
+}
+
+// teachBack grades results and records the event. Caller holds s.mu.
+func (s *Scheduler) teachBack(conceptID string, results []domain.ClaimResult) domain.ReviewEvent {
 	g := domain.GradeGood // plan: contradicted or absent -> again, partial -> hard, else good, never easy
 	for _, r := range results {
 		switch r.Label {
@@ -202,7 +245,7 @@ func (s *Scheduler) ApplyTeachBack(_ context.Context, conceptID string, results 
 			}
 		}
 	}
-	return s.event(domain.EventTeachBack, conceptID, nil, &g, s.now().AddDate(0, 0, gradeDays[g]), "{}"), nil
+	return s.event(domain.EventTeachBack, conceptID, nil, &g, s.now().AddDate(0, 0, gradeDays[g]), "{}")
 }
 
 func (s *Scheduler) ReviewCard(_ context.Context, cardID string, grade domain.Grade) (domain.ReviewEvent, error) {
@@ -224,12 +267,105 @@ func (s *Scheduler) Due(_ context.Context, now time.Time) ([]domain.DueItem, err
 	var out []domain.DueItem
 	for c, d := range s.due {
 		if !d.After(now) {
-			out = append(out, domain.DueItem{ConceptID: c, DueAt: d})
+			out = append(out, domain.DueItem{ConceptID: c, DueAt: d, Reason: "due for review"})
 		}
 	}
 	// Map order is random, so sort to stay deterministic.
 	sort.Slice(out, func(i, j int) bool { return out[i].ConceptID < out[j].ConceptID })
 	return out, nil
+}
+
+// TeachStore keeps sessions, turns and results in memory. IDs are sess-N and
+// taught-N. Sources holds the approved sources LoadConcept returns.
+type TeachStore struct {
+	Concepts map[string]domain.Concept
+	Sources  []domain.Source
+
+	mu        sync.Mutex
+	n         int
+	Sessions  map[string]domain.TeachSession
+	Taught    map[string][]domain.TaughtClaim
+	Assistant map[string]map[int]string
+	Results   map[string][]domain.ClaimResult
+	Finished  map[string]bool
+}
+
+func (m *TeachStore) init() {
+	if m.Sessions == nil {
+		m.Sessions, m.Taught = map[string]domain.TeachSession{}, map[string][]domain.TaughtClaim{}
+		m.Assistant, m.Results, m.Finished = map[string]map[int]string{}, map[string][]domain.ClaimResult{}, map[string]bool{}
+	}
+}
+
+func (m *TeachStore) LoadConcept(_ context.Context, id string) (domain.Concept, []domain.Source, error) {
+	c, ok := m.Concepts[id]
+	if !ok {
+		return domain.Concept{}, nil, fmt.Errorf("fakes: unknown concept %q", id)
+	}
+	return c, m.Sources, nil
+}
+
+func (m *TeachStore) StartSession(_ context.Context, conceptID string) (domain.TeachSession, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.init()
+	m.n++
+	s := domain.TeachSession{ID: fmt.Sprintf("sess-%d", m.n), ConceptID: conceptID}
+	m.Sessions[s.ID] = s
+	return s, nil
+}
+
+func (m *TeachStore) SaveTurn(_ context.Context, t domain.TaughtClaim, _, _ string) (domain.TaughtClaim, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.init()
+	if _, ok := m.Sessions[t.SessionID]; !ok {
+		return domain.TaughtClaim{}, fmt.Errorf("fakes: unknown session %q", t.SessionID)
+	}
+	m.n++
+	t.ID = fmt.Sprintf("taught-%d", m.n)
+	m.Taught[t.SessionID] = append(m.Taught[t.SessionID], t)
+	return t, nil
+}
+
+func (m *TeachStore) SetAssistantText(_ context.Context, sid string, turnNo int, text string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.init()
+	if m.Assistant[sid] == nil {
+		m.Assistant[sid] = map[int]string{}
+	}
+	m.Assistant[sid][turnNo] = text
+	return nil
+}
+
+func (m *TeachStore) SaveResults(_ context.Context, sid string, r []domain.ClaimResult) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.init()
+	m.Results[sid] = r
+	return nil
+}
+
+func (m *TeachStore) FinishSession(_ context.Context, sid string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.init()
+	m.Finished[sid] = true
+	return nil
+}
+
+// PackLoader records every pack it is given.
+type PackLoader struct {
+	mu    sync.Mutex
+	Packs []domain.Pack
+}
+
+func (p *PackLoader) LoadPack(_ context.Context, pack domain.Pack) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.Packs = append(p.Packs, pack)
+	return nil
 }
 
 // Planner returns one fixed 30 minute review block per call.

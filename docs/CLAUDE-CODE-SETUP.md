@@ -8,15 +8,22 @@ One chat per unit, each in its own worktree so files never collide.
 scripts/unit.sh P0-CITE
 ```
 
-`scripts/unit.sh` makes a worktree from `qa` on the unit's branch and starts Claude Code with `/unit <name>`. For units that need earlier wave work, start from the staging branch instead:
+`scripts/unit.sh` makes a worktree from `qa` on the unit's branch and starts Claude Code with `/unit <name>`. Run `git switch qa && git pull` first so the worktree has every merged PR.
 
-```bash
-git switch integration/p0 && scripts/unit.sh P0-OUTAGE
-```
+## The flow (issue, branch, PR, qa, test, main)
 
-## Who merges
+| Step | Who | What |
+| --- | --- | --- |
+| 1. Issue | Cris or the main agent | One issue per unit, labels `phase-0`, a wave label and one type label (`Bug`, `User Story`, `Test`, `Doc`, `Issue`, `question`), title starts with the unit name, acceptance copied from `rpi/<unit>/PROMPT.md` |
+| 2. Branch | Agent | From `qa`, named in `.claude/boundaries.json` |
+| 3. Build | Agent | Small commits, tests, `impl-log.md` updated |
+| 4. PR into `qa` | Agent | `gh pr create --base qa`, same labels as the issue, body "Closes #n", tests run, what is unverified. Agents never merge |
+| 5. Review | Main agent | Diff stays in its files, tests pass, `/code-review` for risky units. Result left as a PR comment |
+| 6. Merge into `qa` | Cris | Use "Create a merge commit", not squash, once checks are green |
+| 7. Test on `qa` | Dino | Follows `docs/TESTING.md`. Each problem becomes a bug issue |
+| 8. Release | Cris | PR from `qa` into `main` after Dino reports a pass |
 
-Agents push their branch and stop. They never open PRs and never touch `qa` or `main`. The main agent merges reviewed branches into `integration/p0`. Cris merges `integration/p0` into `qa`, tests, then `qa` into `main`.
+Nobody pushes straight to `qa` or `main`. The project hook blocks agents from doing so, and from merging PRs.
 
 ## During the build
 

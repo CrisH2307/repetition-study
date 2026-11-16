@@ -80,3 +80,12 @@ func checkReply(reply string, sources []domain.Source, claims []domain.Claim) er
 type errStr string
 
 func (e errStr) Error() string { return string(e) }
+
+func TestSystemForbidsInventedExamples(t *testing.T) {
+	sys := StudentContext{ConceptName: "c", Probe: "p"}.System()
+	for _, want := range []string{"only know what they taught you", "ask them to give the example", "Never introduce an example, number, rate, formula or fact"} {
+		if !strings.Contains(sys, want) {
+			t.Errorf("System() missing rule text %q", want)
+		}
+	}
+}

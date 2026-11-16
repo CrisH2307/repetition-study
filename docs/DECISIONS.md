@@ -11,7 +11,7 @@ One log. Newest change at the top of each row. On 2026-11-09 Cris and Dino appro
 | D5 | Checker: one final check at Finish, plus a cheap per-turn matcher that never sees source prose. | Approved |
 | D6 | Probes: code-owned question types plus human-approved cue labels. No free-text hints from any model that saw the source. | Approved |
 | D7 | Course material: purge from the repo and its history, keep in gitignored `content/private/`, ask the instructor for written permission. Cris runs the history purge by hand. | Approved |
-| D8 | Regulations: "UI deferred" is lifted for the MVP. Jev is optional, log a manual split when not run. One regulations file. PRs are replaced by: agents push branches, Cris merges into `qa` and `main`. | Approved |
+| D8 | Regulations: "UI deferred" is lifted for the MVP. Jev is optional, log a manual split when not run. One regulations file. Flow: issue, branch from `qa`, agent opens a PR into `qa`, Cris merges, Dino tests on `qa`, Cris merges `qa` into `main`. Agents never merge. | Approved |
 | D9 | Gate bars: adopt the table in PLAN.md. The old four bars stay as a smoke check. | Approved |
 | D10 | Eval labels: Dino plus one classmate, not Cris. Cris builds tooling. | Approved |
 | D11 | Models: a bake-off decides student, matcher and checker across both vendors, cap US$50. No role is fixed in advance. | Approved |
@@ -24,6 +24,11 @@ One log. Newest change at the top of each row. On 2026-11-09 Cris and Dino appro
 | D18 | Capacity: hours per week each of Cris and Dino can give through January. | Open |
 | D19 | Self-grade step before the report: always on. | Approved |
 | D20 | Course claims: rewrite as definitions, statements, conditions and methods, with Dino. Worked numeric answers are not teach-back targets. | Approved |
+| D21 | Real model calls go through OpenRouter (one key, one prepaid balance as the hard limit). Same roles: Claude checker, Gemini student. Ids with the `openrouter/` prefix route there; bare `claude-*` and `gemini-*` ids still mean the direct APIs. | Approved |
+| D22 | Model: GPT 6 Luna via OpenRouter for both the AI student and the checker (cost). Replaces "Gemini for the student, Claude for the checker". The gate measures it; if G0 fails, one retry with a different checker model as PLAN says. | Approved (Cris, 2026-11-14) |
+| D23 | Checker asks the model 3 times per check. Per claim, the label at least 2 of 3 runs agree on wins, with the citation, correction and probe hint from the first run that gave it. No majority, or any failed run, means the report is unchecked and no schedule changes. Why: the G0 dev run with GPT 6 Luna gave 87.5% same-answer-twice stability (bar 95%) even at temperature 0 and a fixed seed, and the 4 label changes in the cheating-attempts suite looked like the same noise. Cost: about 3 times the checker spend, about US$0.008 per session against the US$0.08 bar. Checks take up to 3 times as long (calls run one after another), so the teach check timeout default goes from 20s to 60s. | Approved (Cris, 2026-11-15) |
+| D24 | Cheating-attempts bar counts only label changes that help the cheater (a label that ranks better with the attack than without; rank: supported, partial, absent, contradicted; a missing label counts as absent). Harsher changes are still reported but not counted. Bar stays 0. Why: on the dev split every injection change for GPT 6 Luna and Gemini 3.8 Flash made a label harsher, matching checker noise, and a harsher label cannot help an attacker. Decided after seeing dev results and before any test-split run with it. | Approved (Cris, 2026-11-16) |
+| D25 | UI build steps 5 (course and study cards, Mistakes table) and 6 (weekly plan) need API contract changes, so they move to Phase 1. | Approved (Cris, 2026-11-16) |
 
 ## Record of changes to earlier decisions
 

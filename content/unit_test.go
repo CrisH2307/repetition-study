@@ -56,7 +56,7 @@ func normalize(s string) string {
 
 var (
 	uuidRe    = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
-	locatorRe = regexp.MustCompile(`^p\.(\d+), (Ex 3\.\d+|Q\d)( \(cont\.\))?$`)
+	locatorRe = regexp.MustCompile(`^p\.(\d+), (Ex 3\.\d+|Q\d|Notes \d)( \(cont\.\))?$`)
 )
 
 // page returns the text of one page of the source, or false when it is missing.
@@ -69,9 +69,20 @@ func page(text string, n int) (string, bool) {
 	return body, true
 }
 
-func TestUnit(t *testing.T) {
+// TestFixture always runs: the original fixture is committed.
+func TestFixture(t *testing.T) { checkUnit(t, "fixture/unit.json", "fixture/notes.md") }
+
+// TestPrivateUnit checks the real course unit. It skips when the private copy is absent (CI).
+func TestPrivateUnit(t *testing.T) {
+	if _, err := os.Stat("private/source.md"); err != nil {
+		t.Skip("content/private/source.md not present; see content/README.md")
+	}
+	checkUnit(t, "private/unit.json", "private/source.md")
+}
+
+func checkUnit(t *testing.T, unitPath, sourcePath string) {
 	var u unit
-	strict(t, "unit.json", &u)
+	strict(t, unitPath, &u)
 	var al []allowlistEntry
 	strict(t, "allowlist.json", &al)
 	if len(al) != 0 {
@@ -82,12 +93,12 @@ func TestUnit(t *testing.T) {
 		t.Fatal("want exactly one course source")
 	}
 	src := u.Sources[0]
-	raw, err := os.ReadFile("source.md")
+	raw, err := os.ReadFile(sourcePath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if src.Text != normalize(string(raw)) {
-		t.Fatal("unit.json source text is stale: run python3 scripts/parse_pdf.py --sync content/source.md content/unit.json")
+		t.Fatal("unit.json source text is stale: run python3 scripts/parse_pdf.py --sync content/private/source.md content/private/unit.json")
 	}
 
 	if n := len(u.Concepts); n == 0 || n > 8 {
@@ -125,7 +136,7 @@ func TestUnit(t *testing.T) {
 				t.Errorf("claim %s: page %d not in source", cl.ID, n)
 				continue
 			}
-			if m[3] != "" { // continuation page: the problem heading is on an earlier page
+			if m[3] != "" || strings.HasPrefix(m[2], "Notes") { // continuation page, or fixture: no problem heading to find
 				continue
 			}
 			var re *regexp.Regexp
@@ -144,23 +155,37 @@ func TestUnit(t *testing.T) {
 	}
 }
 
-// TestSeedAndEval checks the generated SQL is current and the eval files line up with the unit.
-func TestSeedAndEval(t *testing.T) {
-	var u unit
-	strict(t, "unit.json", &u)
-	pack, err := os.ReadFile("seed_pack.sql")
+// TestSeedPack checks the generated SQL is current. It skips without the private copy.
+func TestSeedPack(t *testing.T) {
+	pack, err := os.ReadFile("private/seed_pack.sql")
 	if err != nil {
-		t.Fatal(err)
+		t.Skip("content/private/seed_pack.sql not present; see content/README.md")
 	}
+	var u unit
+	strict(t, "private/unit.json", &u)
 	if !strings.Contains(string(pack), u.Sources[0].Text) {
-		t.Error("seed_pack.sql is stale: run python3 scripts/parse_pdf.py --sql content/unit.json content/seed_pack.sql")
+		t.Error("seed_pack.sql is stale: run python3 scripts/parse_pdf.py --sql content/private/unit.json content/private/seed_pack.sql")
 	}
-	concepts := map[string]bool{}
 	for _, c := range u.Concepts {
-		concepts[c.ID] = true
 		for _, cl := range c.Claims {
 			if !strings.Contains(string(pack), cl.ID) {
 				t.Errorf("seed_pack.sql lacks claim %s: regenerate it", cl.ID)
+			}
+		}
+	}
+}
+
+// TestEval checks the eval files line up with the concepts in unit.json (no source text needed).
+// Label sheets are claim level: one row per (explanation, required claim of its concept).
+func TestEval(t *testing.T) {
+	var u unit
+	strict(t, "unit.json", &u)
+	required := map[string][]string{}
+	for _, c := range u.Concepts {
+		required[c.ID] = nil
+		for _, cl := range c.Claims {
+			if cl.Required {
+				required[c.ID] = append(required[c.ID], cl.ID)
 			}
 		}
 	}
@@ -170,6 +195,7 @@ func TestSeedAndEval(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer f.Close()
+	var want []string // "id claim_id" in file order
 	ids := map[string]bool{}
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 1<<20), 1<<20)
@@ -184,28 +210,34 @@ func TestSeedAndEval(t *testing.T) {
 		if err := d.Decode(&e); err != nil {
 			t.Fatal(err)
 		}
-		if e.ID == "" || ids[e.ID] || !concepts[e.ConceptID] || strings.TrimSpace(e.Text) == "" {
+		claims, known := required[e.ConceptID]
+		if e.ID == "" || ids[e.ID] || !known || strings.TrimSpace(e.Text) == "" {
 			t.Errorf("explanation %q: empty or duplicate id, unknown concept or empty text", e.ID)
 		}
 		ids[e.ID] = true
+		for _, cl := range claims {
+			want = append(want, e.ID+" "+cl)
+		}
 	}
 	if len(ids) != 20 {
 		t.Errorf("want 20 explanations, got %d", len(ids))
 	}
-	for _, name := range []string{"labels_cris.csv", "labels_dino.csv"} {
+	for _, name := range []string{"labels_dino.csv", "labels_classmate.csv"} {
 		b, err := os.ReadFile("../eval/data/" + name)
 		if err != nil {
 			t.Fatal(err)
 		}
 		rows, err := csv.NewReader(bytes.NewReader(b)).ReadAll()
-		if err != nil || len(rows) != 21 || rows[0][0] != "id" || rows[0][1] != "label" {
-			t.Errorf("%s: want header id,label and 20 rows (err %v)", name, err)
+		if err != nil || len(rows) == 0 || strings.Join(rows[0], ",") != "id,claim_id,explanation,claim,label,note" {
+			t.Errorf("%s: want header id,claim_id,explanation,claim,label,note (err %v)", name, err)
 			continue
 		}
+		var got []string
 		for _, r := range rows[1:] {
-			if !ids[r[0]] {
-				t.Errorf("%s: unknown id %q", name, r[0])
-			}
+			got = append(got, r[0]+" "+r[1])
+		}
+		if strings.Join(got, "\n") != strings.Join(want, "\n") {
+			t.Errorf("%s: rows do not match one row per (explanation, required claim) in explanations.jsonl order", name)
 		}
 	}
 }

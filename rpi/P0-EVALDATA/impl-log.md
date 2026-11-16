@@ -1,0 +1,8 @@
+- step 1: claims proposal written, waiting for Cris
+- step 2: 4 concepts rewritten in content/unit.json; go test ./content ok, locators checked against private PDF
+- step 3: 20 explanations (10 correct, 5 partial, 5 wrong), 80 claim rows per label sheet; labels_cris.csv removed
+- step 4: check_labels.py rewritten (kappa overall and per label, disagreements, --freeze); --selftest passed; simulated run on 80 rows ok
+- step 5: make_perturbations.py -> perturbations.jsonl (102, 4 error types) and split.json; each rule output reviewed by hand
+- step 6: eval/data/LABELLING.md written for Dino and the classmate (one example per label, steps, pass, failure)
+- step 7: content TestEval now checks claim-level sheets (one row per explanation x required claim); go test ./... ok; mutation (deleted row) caught
+- open: cmd/evalcheck still reads labels_final.csv at explanation level (id -> label); needs a claim-level reader before P0-GATE (outside this boundary)

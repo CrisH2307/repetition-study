@@ -176,3 +176,42 @@ func TestLevelFadesWithEvidence(t *testing.T) {
 		t.Fatalf("level_now fresh=%v faded=%v, want 1.3 and 1", fresh.LevelNow, faded.LevelNow)
 	}
 }
+
+// A Toronto user gets every block inside the configured local hours (9:00 to 13:00),
+// including in weeks that contain a daylight-saving change.
+func TestBlocksStayInLocalHoursAcrossDST(t *testing.T) {
+	toronto, err := time.LoadLocation("America/Toronto")
+	if err != nil {
+		t.Skip("no tz database:", err)
+	}
+	cfg := DefaultConfig()
+	cfg.Loc = toronto
+	cfg.TeachLead = 0
+	for _, wk := range []time.Time{
+		time.Date(2026, 3, 8, 0, 0, 0, 0, time.UTC),  // spring forward is Sunday 2026-03-08
+		time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC), // fall back is Sunday 2026-11-01
+		time.Date(2026, 3, 2, 0, 0, 0, 0, time.UTC),  // Monday-start week containing 03-08
+		time.Date(2026, 10, 26, 0, 0, 0, 0, time.UTC),
+	} {
+		in := []SubjectData{subject("a", 20, domain.LevelBeginner, 6, 1)}
+		al, err := cfg.Allocate(wk.AddDate(0, 0, -7), wk, in, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(al.Blocks) == 0 {
+			t.Fatalf("week %s: no blocks", wk.Format("2006-01-02"))
+		}
+		days := map[string]bool{}
+		for _, b := range al.Blocks {
+			l := b.StartsAt.In(toronto)
+			mins := l.Hour()*60 + l.Minute()
+			if mins < cfg.DayStartHour*60 || mins+cfg.BlockMinutes > (cfg.DayStartHour*60 + cfg.SlotsPerDay*cfg.BlockMinutes) {
+				t.Errorf("week %s: block at %s local is outside 09:00 to 13:00", wk.Format("2006-01-02"), l.Format("2006-01-02 15:04"))
+			}
+			days[l.Format("2006-01-02")] = true
+		}
+		if len(days) < 2 {
+			t.Errorf("week %s: blocks fell on %d day(s)", wk.Format("2006-01-02"), len(days))
+		}
+	}
+}

@@ -17,4 +17,4 @@ run:
 	@$(LOAD_ENV) go run ./cmd/api
 
 seed:
-	@$(LOAD_ENV) docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"' < scripts/seed.sql
+	@$(LOAD_ENV) go run ./cmd/seed

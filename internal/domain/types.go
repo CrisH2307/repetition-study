@@ -59,6 +59,23 @@ const (
 	PlanNew    PlanKind = "new"
 )
 
+// ReportStatus says whether the checker ran. An unchecked report changes no schedule.
+type ReportStatus string
+
+const (
+	ReportChecked   ReportStatus = "checked"
+	ReportUnchecked ReportStatus = "unchecked"
+)
+
+type BlockKind string
+
+const (
+	BlockText    BlockKind = "text"
+	BlockMath    BlockKind = "math"
+	BlockHeading BlockKind = "heading"
+	BlockFigure  BlockKind = "figure"
+)
+
 type Source struct {
 	ID         string     `json:"id"`
 	Kind       SourceKind `json:"kind"`
@@ -69,6 +86,20 @@ type Source struct {
 	ReviewedBy string     `json:"reviewed_by,omitempty"`
 	ReviewedAt *time.Time `json:"reviewed_at,omitempty"`
 	Text       string     `json:"text"`
+}
+
+// SourceBlock is one parsed block of an approved source (table source_blocks).
+// TextNorm is TextMD after the one normalizer in internal/cite.
+type SourceBlock struct {
+	ID         string     `json:"id"`
+	SourceID   string     `json:"source_id"`
+	Page       *int       `json:"page"`
+	Ordinal    int        `json:"ordinal"`
+	Kind       BlockKind  `json:"kind"`
+	TextMD     string     `json:"text_md"`
+	TextNorm   string     `json:"text_norm"`
+	VerifiedBy string     `json:"verified_by,omitempty"`
+	VerifiedAt *time.Time `json:"verified_at,omitempty"`
 }
 
 type Subject struct {
@@ -136,6 +167,13 @@ type ReviewEvent struct {
 	StabilityAfter  float64         `json:"stability_after"`
 	Payload         json.RawMessage `json:"payload"`
 	CreatedAt       time.Time       `json:"created_at"`
+	// SessionID is the idempotency key for teach_back: one session writes one
+	// teach_back event (unique partial index in migrations/0003).
+	SessionID      *string `json:"session_id"`
+	ClaimID        *string `json:"claim_id"`
+	SelfGrade      *Grade  `json:"self_grade"`
+	CheckerModel   *string `json:"checker_model"`
+	CheckerVersion *string `json:"checker_version"`
 }
 
 type PlanBlock struct {
@@ -191,6 +229,8 @@ type Report struct {
 	// Schedule is the teach_back event written after the attempt, so the
 	// date change is visible. Nil until the scheduler has run.
 	Schedule *ReviewEvent `json:"schedule"`
+	// Status is unchecked when the checker failed. Then Schedule stays nil.
+	Status ReportStatus `json:"status"`
 }
 
 type CheckInput struct {
@@ -207,6 +247,18 @@ type DueItem struct {
 	CardID      *string   `json:"card_id"`
 	Card        *Card     `json:"card"` // set when CardID is, so the review screen can show it
 	DueAt       time.Time `json:"due_at"`
+	// Reason says why the item is due, in plain words for the review screen.
+	Reason string `json:"reason"`
+}
+
+// Pack is one course unit as a file: what cmd/seed loads. JSON keys match
+// content/unit.json. Concepts carry their claims. Blocks and History are optional.
+type Pack struct {
+	Subject  Subject       `json:"subject"`
+	Sources  []Source      `json:"sources"`
+	Blocks   []SourceBlock `json:"blocks,omitempty"`
+	Concepts []Concept     `json:"concepts"`
+	History  []ReviewEvent `json:"history,omitempty"`
 }
 
 type Plan struct {

@@ -1,5 +1,5 @@
-// Package llm holds the two real model clients behind domain.LLM.
-// Gemini streams the AI student. Anthropic returns JSON for the checker.
+// Package llm holds the real model clients behind domain.LLM. Gemini and
+// Anthropic both serve Stream and JSON, so either vendor can fill any role.
 package llm
 
 import (
@@ -9,9 +9,6 @@ import (
 	"strings"
 	"time"
 )
-
-// ErrUnsupported is returned by the method a client does not serve.
-var ErrUnsupported = errors.New("llm: method not supported by this client")
 
 // Retry tunes attempts and per-attempt time. Zero values use the defaults.
 type Retry struct {
@@ -59,6 +56,10 @@ func (r Retry) do(ctx context.Context, fn func(ctx context.Context) error) error
 	return err
 }
 
+// errBadJSON marks a JSON reply that did not parse, often a cut-off one. It is
+// worth another attempt, so retryable() accepts it.
+var errBadJSON = errors.New("llm: reply is not the expected JSON")
+
 // retryable is true for timeouts, network errors and 429/5xx. The SDK errors
 // carry the status in their message, so this matches on text. ponytail: string
 // match, swap for typed errors if an SDK exposes them stably.
@@ -67,7 +68,7 @@ func retryable(err error) bool {
 	if errors.As(err, &nr) {
 		return false
 	}
-	if errors.Is(err, context.DeadlineExceeded) {
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, errBadJSON) {
 		return true
 	}
 	var ne net.Error

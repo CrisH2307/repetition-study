@@ -5,8 +5,11 @@ package checker
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/CrisH2307/repetition-study/internal/domain"
@@ -24,6 +27,9 @@ type Checker struct {
 	// label come back as absent. The teach engine sets it at Finish.
 	AllowAbsent bool
 	Log         *slog.Logger // defaults to slog.Default()
+	// Votes is how many times the model is asked. Per claim the label most
+	// runs agree on wins (D23). Zero means 3. Tests and fakes may use 1.
+	Votes int
 }
 
 const system = `You are a strict checker for a student's spoken or written explanation of one concept.
@@ -40,9 +46,15 @@ Rules
 Reply with JSON only, exactly this shape:
 {"results":[{"claim_id":string|null,"student_text":string,"label":"supported"|"partial"|"contradicted","citation":{"source_id":string,"quote":string,"locator":string}|null,"correction":string|null,"probe_hint":string|null}]}`
 
-// untrusted fences student text so it cannot close its own tag.
+// fenceTag matches anything that could read as an opening or closing fence
+// tag: any case, spaces, slashes or backslashes before the name, with or
+// without the closing ">".
+var fenceTag = regexp.MustCompile(`(?i)<[\s/\\]*(transcript|taught|latex)\b`)
+
+// untrusted fences student text so it cannot open or close any fence tag.
+// The "<" of every fence-like tag becomes "&lt;", so the model sees text.
 func untrusted(tag, s string) string {
-	s = strings.ReplaceAll(s, "</"+tag+">", "< /"+tag+">")
+	s = fenceTag.ReplaceAllStringFunc(s, func(m string) string { return "&lt;" + m[1:] })
 	return "<" + tag + ">\n" + s + "\n</" + tag + ">"
 }
 
@@ -100,13 +112,26 @@ func (c *Checker) CheckDetailed(ctx context.Context, in domain.CheckInput) (Outc
 	if err != nil {
 		return Outcome{}, err
 	}
-	var reply struct {
-		Results []domain.ClaimResult `json:"results"`
+	n := c.Votes
+	if n <= 0 {
+		n = 3
 	}
-	if err := c.LLM.JSON(ctx, req, &reply); err != nil {
-		return Outcome{}, fmt.Errorf("checker: llm: %w", err)
+	// ponytail: calls run one after another, so a check takes up to n times
+	// as long. Parallel calls would need a concurrency-safe evalcheck budget.
+	runs := make([]Outcome, n)
+	for i := range runs {
+		var reply struct {
+			Results []domain.ClaimResult `json:"results"`
+		}
+		if err := c.LLM.JSON(ctx, req, &reply); err != nil {
+			return Outcome{}, fmt.Errorf("checker: llm run %d of %d: %w", i+1, n, err)
+		}
+		runs[i] = enforce(in.Concept, srcs, reply.Results, c.AllowAbsent)
 	}
-	o := enforce(in.Concept, srcs, reply.Results, c.AllowAbsent)
+	o, err := vote(runs)
+	if err != nil {
+		return Outcome{}, err
+	}
 	lg := c.Log
 	if lg == nil {
 		lg = slog.Default()
@@ -115,4 +140,64 @@ func (c *Checker) CheckDetailed(ctx context.Context, in domain.CheckInput) (Outc
 		lg.Warn("checker removed model output", "concept", in.Concept.ID, "claim", d.ClaimID, "reason", d.Reason)
 	}
 	return o, nil
+}
+
+// rank orders labels from best to worst for the student.
+var rank = map[domain.ClaimLabel]int{
+	domain.LabelSupported: 1, domain.LabelPartial: 2, domain.LabelAbsent: 3, domain.LabelContradicted: 4,
+}
+
+// ErrNoMajority means the runs gave a claim no label that more than half share.
+var ErrNoMajority = errors.New("no majority")
+
+// vote merges enforced runs. Results are grouped by claim id; results with no
+// claim id form one group of their own. A run's vote for a group is the worst
+// label it gave there, or "" if it gave none. The value more than half the runs
+// share wins, and the group's results come from the first run that voted for
+// it, so citations stay the ones enforce already verified. No majority in any
+// group is an error. Drops, Proposed and Valid add up over all runs.
+func vote(runs []Outcome) (Outcome, error) {
+	var keys []string
+	groups := make([]map[string][]domain.ClaimResult, len(runs))
+	var out Outcome
+	for i, o := range runs {
+		groups[i] = map[string][]domain.ClaimResult{}
+		for _, r := range o.Results {
+			k := ""
+			if r.ClaimID != nil {
+				k = "id:" + *r.ClaimID
+			}
+			if !slices.Contains(keys, k) {
+				keys = append(keys, k)
+			}
+			groups[i][k] = append(groups[i][k], r)
+		}
+		out.Drops = append(out.Drops, o.Drops...)
+		out.Proposed += o.Proposed
+		out.Valid += o.Valid
+	}
+	for _, k := range keys {
+		votes := make([]domain.ClaimLabel, len(runs))
+		count := map[domain.ClaimLabel]int{}
+		for i := range runs {
+			for _, r := range groups[i][k] {
+				if rank[r.Label] > rank[votes[i]] {
+					votes[i] = r.Label
+				}
+			}
+			count[votes[i]]++
+		}
+		win := -1
+		for i, v := range votes {
+			if 2*count[v] > len(runs) {
+				win = i
+				break
+			}
+		}
+		if win < 0 {
+			return Outcome{}, fmt.Errorf("checker: %w for claim %q: %v", ErrNoMajority, strings.TrimPrefix(k, "id:"), votes)
+		}
+		out.Results = append(out.Results, groups[win][k]...)
+	}
+	return out, nil
 }

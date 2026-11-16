@@ -21,10 +21,11 @@ These steps are for a Mac. If you use Windows, tell Cris before you start.
 
 Do this once.
 
-**A1. Install three things**
+**A1. Install four things**
 1. Docker Desktop (from docker.com). Open it and wait until it says it is running.
 2. Go (from go.dev/dl). Download the Mac installer and click through it.
 3. GitHub Desktop (from desktop.github.com). Sign in with your GitHub account (dodino24).
+4. Node.js (from nodejs.org). Download the version marked "LTS" and click through the installer. The page in Part D needs it.
 
 **A2. Get the project**
 1. In GitHub Desktop choose File, then Clone Repository, then pick `CrisH2307/repetition-study`, then Clone.
@@ -55,6 +56,12 @@ docker --version
 ```
 
 What you should see: a line that starts with `Docker version`.
+
+```bash
+node --version
+```
+
+What you should see: a line that starts with `v` and a number, like `v24.1.0`.
 
 **A5. Run everything once**
 
@@ -116,11 +123,9 @@ What you should see: nothing at all. If lines appear, tell Cris right away and d
 make migrate
 ```
 
-What you should see: nothing printed at all (the first time ever it prints two "applied" lines, which is also fine). It must not show an error.
+What you should see: nothing printed at all (the first time ever it prints three "applied" lines, which is also fine). It must not show an error.
 
 **B6. The AI student never sees the course text**
-
-This one only works after Cris says the teaching part is added to `qa`.
 
 ```bash
 go test ./internal/teach/...
@@ -132,19 +137,13 @@ What you should see: a line that starts with `ok`.
 
 This test decides whether the checker is good enough to change the review dates. If it fails, the checker's findings are shown only as suggestions.
 
-**The 20 explanations.** We prepare 20 short student explanations: about 10 correct, 5 partly correct, 5 wrong, each split into small statements. You and one classmate (not Cris, because you know this subject) each give every statement a label, working alone. Cris builds the tools and does not label:
-- `supported`: the explanation is correct
-- `partial`: partly correct
-- `contradicted`: it says something that is wrong
-- `absent`: it leaves out something important
+**The labels are done.** You and your classmate labelled the 20 explanations on your own, agreed on the few differences, and the list is frozen in `eval/data/labels_final.csv`. Nobody changes it, even if a result looks bad. You have nothing more to label.
 
-Steps:
-1. Label your sheet by yourself. Do not look at your classmate's labels. The guide is `eval/data/LABELLING.md`.
-2. Cris runs a tool that measures how often you two agree. It must be at least 0.6 (a score from 0 to 1). If it is lower, you two talk about the differences and label again.
-3. You and your classmate agree on every remaining difference. The agreed list is saved as `labels_final.csv`.
-4. After that file is saved, nobody changes it, even if a result looks bad.
+**Your job now has two parts, both after Cris runs the gate** (the steps Cris follows are in `docs/GATE.md`). Cris will tell you when it is ready.
+1. Read the report at `eval/results/gate.md`. It starts with a plain summary for you. Compare each line with the table below.
+2. Fill in the citation sheet. Cris will send you `citations_to_rate.csv`. For each row, read the correction and the quote. In the last column, `relevant`, write `yes` if the quote really supports the correction, otherwise `no`. Then send the sheet back to Cris. Do not paste course text anywhere public.
 
-**What counts as a pass.** Cris runs the checker. You read the report at `eval/results/gate.md`. It starts with a plain summary for you.
+**What counts as a pass.** Cris runs the checker and sends you the report.
 
 | Question | Pass |
 | --- | --- |
@@ -161,38 +160,155 @@ Steps:
 
 Also read every failed example in full, not just the count. If any line fails, stop and decide with Cris. The plan is to use fewer topics and try a different checker model once. If it still fails, we show findings as suggestions only, and we say so.
 
-## Part D. Using the page yourself (when Cris says the page is ready)
+## Part D. Using the page yourself
 
-Use Chrome. Take a screenshot at every step. Start from a clean copy of the data. Cris will give you the exact command. You do three real sessions on the practice-set topics and write down what felt wrong.
+Today the page uses a **pretend AI**. It costs nothing and needs no keys. Use Chrome. Take a screenshot at every step and write pass or fail for each one.
+
+If anything does not match "What you should see": copy everything on the screen, send it to Cris, and stop.
+
+### D1. Start the project (two Terminal windows)
+
+**Window 1.** Open Terminal in the project folder (like step A3). Run these one at a time.
+
+```bash
+git pull
+```
+
+What you should see: a few lines, or `Already up to date.` No error.
+
+```bash
+docker compose down -v
+```
+
+What you should see: a few lines that end with the word `Removed`, or one line saying there was nothing to remove. Both are fine. This gives you a clean copy of the practice data. It only clears the practice data on your own computer.
+
+```bash
+make up migrate seed
+```
+
+What you should see: some lines from Docker, then three lines that start with `applied`, then a line that starts with `seeded Fixture course`. No error.
+
+```bash
+STUDENT_MODEL=fake CHECKER_MODEL=fake make run
+```
+
+What you should see: one line that says `listening on :8080`, and the command keeps running. That is correct. Leave this window open.
+
+**Window 2.** Press Cmd+N for a new Terminal window, go to the project folder again (like step A3), then run these one at a time.
+
+```bash
+cd web
+```
+
+```bash
+npm install
+```
+
+What you should see: some lines, ending without the word `ERR`. Warnings are fine.
+
+```bash
+API_TARGET=http://localhost:8080 npm run dev
+```
+
+What you should see: a line with `http://localhost:5173`. Leave this window open too.
+
+Open Chrome and go to **http://localhost:5173**
+
+### D2. Use the page
 
 | Step | What you do | What you should see |
 | --- | --- | --- |
-| D1 | Pick the topic Cris names | The topic opens, and no course notes are visible |
-| D2 | Type your explanation. Put in one wrong thing on purpose | Your formulas show properly as you type |
-| D3 | Send your explanation | The AI student asks one question at a time and never tells you the answer |
-| D4 | Finish the session and tick which statements you think you covered | A report appears |
-| D5 | Read the report | The wrong thing is marked, with an exact quote from the course notes and its page |
-| D6 | Look at that topic's next review date | The date moved sooner, and you can see before and after |
-| D7 | Open the study cards | The mistake made at least one card, and you can edit it |
-| D8 | Explain the same topic again with no mistakes | No false mistake appears, and the date does not move sooner |
-| D9 | Change a review date by hand | It saves, and the change shows in the history |
-| D10 | Cris turns the checker off. Finish a session | The report says "not checked", and no date changes |
+| P1 | Look at the first page | Today's date as the heading, and one folded card called "Fixture course (2 topics)" holding two topics, "Exponential races" and "Poisson superposition". Each says "Due today" in red and "New topic: not taught yet", with a "Start" button |
+| P2 | Click "Start" on Exponential races | A box called "Your explanation", the line "Course notes are hidden until you finish." and a timer that counts up. No course notes anywhere on the screen |
+| P3 | Type: `The minimum of two exponentials with rates $a$ and $b$ has rate $a-b$.` | Under the box, the preview shows the formulas as proper math, not dollar signs |
+| P4 | Click "Send" | "The AI student asks:" shows one question. It never tells you the answer |
+| P5 | Click "I am done, check my explanation" | The heading "How do you feel about this concept?" and your sentence, with three choices: "Right", "Not sure", "Wrong". The line "Only for you. Your review dates do not change." |
+| P6 | Choose "Right", then click "Show my results" | A results page. It says "Your guess: you marked 1 of 1 points as right." The "Next review" line shows one date crossed out and a new date after it |
+| P7 | Click "Pick another topic" | You are back on the topic list. Only "Poisson superposition" is left, because Exponential races is now set for review on a later day |
+| P8 | Do P2 to P7 again on "Poisson superposition" | Same as above. At the end the list says "There are no topics to practise right now." |
 
-D3, D5 and D6 are the heart of the project. If they fail, nothing else matters. Not tested yet because they are not built: accounts, uploading your own notes, the daily summary.
+**Expected today, not a bug:** every result says "Not mentioned". That is the pretend checker. Marking the wrong thing with an exact quote from the course notes needs the real AI.
 
-## Part E. Things that can go wrong on stage
+### D10. The checker is turned off
+
+This checks that when the checker is broken, the page says so and no review date moves. It uses a pretend checker that always fails, so it also costs nothing.
+
+**Get ready.** In Window 1, press Ctrl+C to stop the server. Then run these one at a time.
+
+```bash
+docker compose down -v
+```
+
+```bash
+make up migrate seed
+```
+
+What you should see: a line that starts with `seeded Fixture course`.
+
+```bash
+STUDENT_MODEL=fake CHECKER_MODEL=fake-down make run
+```
+
+What you should see: one line that says `listening on :8080`, and the command keeps running. Leave Window 2 as it is.
+
+| Step | What you do | What you should see |
+| --- | --- | --- |
+| D10a | In Chrome, reload the page | Two topics again, each saying "New topic: not taught yet" |
+| D10b | Click "Start" on Exponential races, type the sentence from P3, click "Send" | The AI student asks one question, like before |
+| D10c | Click "I am done, check my explanation", choose "Right", click "Show my results" | An amber box that says "Not checked yet. Nothing changed: your review date stays the same and your explanation is saved." with two buttons, "Try the check again" and "Try later". There is no "Next review" line and no list of results. Click "Try the check again": the same box stays, because the checker is still off |
+| D10d | Click "Try later" | Both topics are still on the list, and each still says "New topic: not taught yet". That shows no date moved |
+
+**Put it back.** In Window 1, press Ctrl+C, then run:
+
+```bash
+STUDENT_MODEL=fake CHECKER_MODEL=fake make run
+```
+
+What you should see: `listening on :8080` again.
+
+### Waiting for Cris
+
+Do not test these yet. Cris will tell you when.
+
+| What | Why it waits |
+| --- | --- |
+| The wrong thing is marked with an exact quote from the course notes and its page | Needs the real AI |
+| Explaining a topic again with no mistakes shows no false mistake | Needs the real AI |
+| Study cards you can open and edit | Not on the page yet |
+| Changing a review date by hand | Not on the page yet |
+
+Also not built yet: accounts, uploading your own notes, the daily summary.
+
+## Part E. Things that can go wrong
+
+Do these after Part D, with both windows still running.
+
+| Step | What you do | What you should see |
+| --- | --- | --- |
+| E1 | Start a topic and type a formula with a mistake in it, like `$\frac{1}{$` | The preview shows the broken formula as red text. The page does not go blank |
+| E2 | In Window 1, press Ctrl+C to stop the server. Then in Chrome, click "Send" | A plain message that starts with "The AI student could not answer just now." Not a blank screen |
+| E3 | In Window 1, run `STUDENT_MODEL=fake CHECKER_MODEL=fake make run` again, then reload Chrome | The topic list shows again and the page works. The half-finished session from E2 is gone. That is expected |
+
+For E1 you need a topic on the list. If the list is empty, run the "Get ready" commands from D10 again, but with `CHECKER_MODEL=fake` in the last one.
+
+### Waiting for Cris
+
+These need the real AI, so do not test them yet. Cris will tell you when.
 
 | Problem | What to test |
 | --- | --- |
-| Formulas look wrong | Type a formula and check the preview matches what you meant |
+| Missing or wrong key | Start with a wrong key and check that you see a clear message, not a blank screen |
+| Slow answers | Count the seconds until the first word and until the results, for 10 turns. These numbers include the AI company's own delay. Do not compare them with tests that used the pretend AI |
+| Bad internet | Turn Wi-Fi off and see what the screen does. Keep a screen recording of Part D as a backup |
 | Voice (only if it is added later) | We type first. If voice is added, spoken math comes out garbled, so check it. Chrome sends voice to Google, so say that out loud |
-| Bad internet | Turn Wi-Fi off and see what the screen does. Keep a screen recording of D1 to D9 as a backup. |
-| Missing or wrong key | Start with a wrong key and check that you see a clear message, not a blank screen. |
-| Slow answers | Count the seconds until the first word and until the report, for 10 turns. These numbers include the AI company's own delay. Do not compare them with tests that used a pretend AI. |
+
+## When you are done with Parts D and E
+
+Stop both windows with Ctrl+C. Tell Cris pass or fail for D1, P1 to P8, D10a to D10d and E1 to E3, plus anything that felt confusing. Report each problem the way Part F says.
 
 ## Part F. How to report a problem
 
-Send Cris one message per problem, with these four lines:
+Open a new issue on GitHub (the Issues tab, then "New issue", then "Problem found while testing") and answer the four questions. One problem per issue. You can also send the same four lines to Cris in a message:
 1. What I did (steps, in order)
 2. What I expected
 3. What happened (paste the message or a screenshot)
@@ -201,8 +317,8 @@ Send Cris one message per problem, with these four lines:
 ## Order of work
 
 1. Part A now.
-2. Part B now. B6 waits until Cris says the teaching part is in `qa`.
+2. Part B now.
 3. Find one classmate who knows this course to label with you. Label your sheet for Part C as soon as the explanations are ready. This takes the longest, so start early.
 4. Part C gate run, then stop and decide with Cris.
-5. Parts D and E when the page is ready. The full run must pass on `qa` before anything goes to the final version.
+5. Parts D and E now, with the pretend AI. The steps marked "Waiting for Cris" come later. The full run must pass on `qa` before anything goes to the final version.
 6. You tell Cris pass or fail. Cris decides what goes to the final version.

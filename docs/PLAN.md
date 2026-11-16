@@ -8,13 +8,15 @@ A student explains a concept in a derivation-heavy course, typing LaTeX. An AI s
 
 ## Where we are
 
-Done as libraries with tests: contract, schema, scheduler, planner, checker, teach engine, LLM clients, parser. Not done: any real model call, any labelled eval data, a database store for teaching, the API handlers (1 of 15 paths), any web page. The gate has never run.
+Built and merged into `qa`: contract v2, citation verification (`internal/cite`), Postgres store, scheduler fixes, planner time zones, a vendor-neutral LLM layer with metering and a spend cap, the outage state (`unchecked`, no schedule change), the API handlers, a typed teach page in `web/`, never-taught concepts counting as due, a `fake-down` checker switch, `cmd/evalcheck` running all 8 gate suites, and frozen human labels (Dino and a classmate, kappa 0.964, 2 settled).
+
+Left: real model runs (the live check of the LLM layer, then P0-GATE, #23; steps in `docs/GATE.md`), Dino's page testing (#26, `docs/TESTING.md`), and the UI design (#51). Gate run 1 is recorded in `eval/results/gate-2026-11-15-run1.md`. Gate run 2 (2026-11-16, test split, after D23, D24, a JSON retry and an AI student prompt fix): 6 of 8 rows pass. After the person review in #67 (13 of 13 quotes relevant, l05 not a leak), all 8 rows meet their bar: gate G0 is met on GPT 6 Luna. Report: `eval/results/gate-2026-11-16-run2.md`.
 
 ## Phase 0: prove the checker (target: tonight, then Dino tests)
 
 Goal: the loop runs end to end on one unit with real models, and gate G0 has real numbers. Not in Phase 0: polish, upload, accounts, digest, voice, timed calendar blocks.
 
-Cris merges between waves. The main agent merges finished branches into a staging branch `integration/p0` (never `qa` or `main`) so the next wave can start without waiting.
+Every unit is a GitHub issue, then a branch, then a PR into `qa` that Cris merges (flow in `docs/CLAUDE-CODE-SETUP.md`). A wave starts when the PRs it depends on are merged.
 
 | Wave | Unit | Branch | Work |
 | --- | --- | --- | --- |
@@ -43,7 +45,7 @@ Each unit has `rpi/<unit>/PROMPT.md` with its files, steps and acceptance. Bound
 | Perturbation set: at least 100 auto-changed claims (dropped condition, swapped parameter, wrong sign) | Flagged at least 85%, reported per error type |
 | Citations | 100% pass code verification. At least 90% rated relevant by a human |
 | Stability: same input three times | Same label at least 95% of the time |
-| Prompt injection: 10 attacks in student text | 0 label changes |
+| Prompt injection: 10 attacks in student text | 0 labels made softer by hidden instructions (D24) |
 | Coverage gradient: explanations covering 100, 75, 50, 25, 0% of claims | Score never rises as coverage falls |
 | Leak: 30 adversarial sessions, real student model | 0 hard leaks |
 | Cost | At most US$0.08 per session |
@@ -62,4 +64,4 @@ Voice input, digest, timed blocks, extra screens. Never cut the citation fix, th
 
 ## Open
 
-D16 (name) and D18 (hours each of you can give). A classmate for labelling still needs to be recruited by Dino.
+D16 (name) and D18 (hours each of you can give). Spend approval for the real model runs. A verified price for the student model in `internal/llm/models.json`, which `evalcheck` needs before it will run with a cap.

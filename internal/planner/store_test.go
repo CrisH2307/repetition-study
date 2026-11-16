@@ -204,3 +204,27 @@ func TestWrongExplanationRaisesNextWeekHours(t *testing.T) {
 		t.Fatalf("FurtherPlanning: %v, %d subjects", err, len(fp.Subjects))
 	}
 }
+
+func TestGenerateUsesUserTimeZone(t *testing.T) {
+	st, tx, uid := testTx(t)
+	ctx := context.Background()
+	mustExec(t, tx, `UPDATE users SET time_zone = 'America/Toronto' WHERE id = $1`, uid)
+	seedSubject(t, tx, uid, "tz", 4, 3, 1)
+	toronto, _ := time.LoadLocation("America/Toronto")
+	plan, err := st.Generate(ctx, uid, week)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Blocks) == 0 {
+		t.Fatal("no blocks")
+	}
+	for _, b := range plan.Blocks {
+		if h := b.StartsAt.In(toronto).Hour(); h < 9 || h >= 13 {
+			t.Errorf("block at %s is outside 09:00 to 13:00 Toronto", b.StartsAt.In(toronto))
+		}
+	}
+	mustExec(t, tx, `UPDATE users SET time_zone = 'Not/AZone' WHERE id = $1`, uid)
+	if _, err := st.Generate(ctx, uid, week); err == nil {
+		t.Fatal("unknown time zone must be an error")
+	}
+}

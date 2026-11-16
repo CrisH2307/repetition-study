@@ -164,11 +164,35 @@
       "rpi/P0-GATE/"
     ]
   },
+  "P0-GATEPREP": {
+    "branch": "fix/gate-prep-review",
+    "allow": [
+      "cmd/evalcheck/",
+      "eval/data/make_gate_sets.py",
+      "eval/data/injections.jsonl",
+      "eval/data/coverage.jsonl",
+      "eval/data/leak_sessions.jsonl",
+      "eval/data/make_perturbations.py",
+      "eval/data/perturbations.jsonl",
+      "eval/data/split.json",
+      "internal/llm/",
+      "rpi/P0-GATEPREP/"
+    ]
+  },
   "P0-SLICE": {
     "branch": "feature/dogfood-page",
     "allow": [
       "web/",
       "rpi/P0-SLICE/"
+    ]
+  },
+  "P0-OPENROUTER": {
+    "branch": "feature/openrouter",
+    "allow": [
+      "internal/llm/",
+      "docs/GATE.md",
+      "docs/DECISIONS.md",
+      "rpi/P0-OPENROUTER/"
     ]
   }
 }
