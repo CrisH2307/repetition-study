@@ -194,5 +194,94 @@
       "docs/DECISIONS.md",
       "rpi/P0-OPENROUTER/"
     ]
+  },
+  "P1-CONTRACT": {
+    "branch": "feature/contract-v3",
+    "allow": [
+      "internal/domain/",
+      "api/",
+      "migrations/",
+      "internal/fakes/",
+      "rpi/P1-CONTRACT/"
+    ]
+  },
+  "P1-E2E": {
+    "branch": "feature/e2e-loop",
+    "allow": [
+      "web/package.json",
+      "web/package-lock.json",
+      "web/playwright.config.ts",
+      "web/e2e/",
+      ".github/workflows/",
+      "rpi/P1-E2E/"
+    ]
+  },
+  "P1-IMAGE": {
+    "branch": "chore/docker-image",
+    "allow": [
+      "Dockerfile",
+      ".dockerignore",
+      "compose.yaml",
+      "cmd/api/",
+      "docs/DEPLOY.md",
+      "rpi/P1-IMAGE/"
+    ]
+  },
+  "P1-STORE": {
+    "branch": "feature/pg-store-v3",
+    "allow": [
+      "internal/store/",
+      "rpi/P1-STORE/"
+    ]
+  },
+  "P1-COURSE": {
+    "branch": "feature/course-notes",
+    "allow": [
+      "internal/course/",
+      "rpi/P1-COURSE/"
+    ]
+  },
+  "P1-AUTH": {
+    "branch": "feature/invite-auth",
+    "allow": [
+      "internal/auth/",
+      "cmd/invite/",
+      "rpi/P1-AUTH/"
+    ]
+  },
+  "P1-TODAY": {
+    "branch": "feature/today-queue",
+    "allow": [
+      "internal/planner/",
+      "rpi/P1-TODAY/"
+    ]
+  },
+  "P1-API": {
+    "branch": "feature/api-v3",
+    "allow": [
+      "internal/app/",
+      "cmd/api/",
+      "cmd/export/",
+      "Makefile",
+      "go.mod",
+      "go.sum",
+      "rpi/P1-API/"
+    ]
+  },
+  "P1-WEB": {
+    "branch": "feature/web-app",
+    "allow": [
+      "web/",
+      "rpi/P1-WEB/"
+    ]
+  },
+  "P1-DEPLOY": {
+    "branch": "chore/deploy",
+    "allow": [
+      "deploy/",
+      "docs/DEPLOY.md",
+      ".github/workflows/",
+      "rpi/P1-DEPLOY/"
+    ]
   }
 }
