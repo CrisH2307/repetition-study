@@ -1,10 +1,41 @@
 import type { Plugin } from 'vite'
+import type { IncomingMessage } from 'node:http'
 
+// In-memory fake of api/openapi.yaml v3 for `npm run dev` and the mock Playwright test.
+// It mimics the server's answers, not its rules: the real quote check lives in internal/cite.
+const S1 = '00000000-0000-0000-0000-0000000000s1'
 const C1 = '00000000-0000-0000-0000-00000000f001'
 const C2 = '00000000-0000-0000-0000-00000000f002'
 const day = 86400000
 const iso = (n: number) => new Date(Date.now() + n * day).toISOString()
-let lastConcept = C1 // the mock remembers nothing else
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==', 'base64')
+
+type Rec = Record<string, any>
+let n = 0
+const newId = (p: string) => `${p}-${++n}`
+let signedIn = true
+let lastConcept = C1
+const course = { id: S1, name: 'Fixture course', weekly_hours: 3, level: 'intermediate', weight: 1 }
+const courses: Rec[] = [course]
+const concepts: Rec[] = [
+  { id: C1, subject_id: S1, name: 'Exponential races' },
+  { id: C2, subject_id: S1, name: 'Practice: pretend the checker is down' },
+]
+const claims: Rec[] = [
+  { id: 'c1', concept_id: C1, text: 'The density is $a e^{-at}$ for $t \\ge 0$.', source_id: 'src1', locator: 'page 1', required: true, kind: 'definition' },
+  { id: 'c2', concept_id: C1, text: 'X finishes first with chance $a/(a+b)$.', source_id: 'src1', locator: 'page 1', required: true, kind: 'statement' },
+]
+const uploads: Rec[] = []
+const pages: Rec[] = []
+const blocks: Rec[] = []
+
+const upStatus = (u: Rec) => {
+  const ps = pages.filter((p) => p.upload_id === u.id)
+  u.pages_total = ps.length
+  u.pages_ready = ps.filter((p) => p.status === 'ready').length
+  if (u.status !== 'reading') u.status = ps.length && u.pages_ready === ps.length ? 'ready' : 'needs_checking'
+  return u
+}
 
 const report = (concept: string) => ({
   session_id: 'mock-session',
@@ -17,43 +48,160 @@ const report = (concept: string) => ({
           due_before: iso(6), due_after: iso(1), stability_before: 5, stability_after: 2,
           payload: {}, created_at: iso(0), session_id: 'mock-session', claim_id: null,
           self_grade: null, checker_model: 'mock', checker_version: '0' },
-  results: concept === C2 ? [] : [
+  results: [
     { claim_id: 'c1', student_text: 'The density is $a e^{-at}$ for $t \\ge 0$.', label: 'supported',
-      citation: { source_id: 's1', quote: 'has the density a e^(-a t) for t at least zero.', locator: 'page 1' },
+      citation: { source_id: 'src1', quote: 'has the density a e^(-a t) for t at least zero.', locator: 'page 1' },
       correction: null, probe_hint: null },
     { claim_id: 'c2', student_text: 'The chance X finishes first is $b/(a+b)$.', label: 'contradicted',
-      citation: { source_id: 's1', quote: 'the chance that X finishes before Y is a / (a + b).', locator: 'page 1' },
+      citation: { source_id: 'src1', quote: 'the chance that X finishes before Y is a / (a + b).', locator: 'page 1' },
       correction: 'X finishes first with chance $a/(a+b)$, not $b/(a+b)$.', probe_hint: null },
     { claim_id: null, student_text: '', label: 'absent', citation: null, correction: null, probe_hint: null },
-  ],
+  ].map((r) => (concept === C2 ? { ...r, label: 'absent', citation: null, correction: null } : r)),
 })
+
+const item = (c: Rec, i: number) => ({
+  concept_id: c.id, concept_name: c.name, subject_id: c.subject_id, kind: i % 2 ? 'recall' : 'teach',
+  minutes: i % 2 ? 5 : 15, due_at: iso(i), reason: i ? 'Due soon' : 'New topic: not taught yet',
+})
+const hours = (c: Rec, i: number) => ({ subject_id: c.id, name: c.name, hours_used: 1.2, hours_budget: c.weekly_hours, reason: i ? '' : 'Up 0.5 h: 1 gap on Monday' })
+
+async function body(req: IncomingMessage): Promise<Buffer> {
+  const parts: Buffer[] = []
+  for await (const d of req) parts.push(d as Buffer)
+  return Buffer.concat(parts)
+}
 
 export function mockApi(): Plugin {
   return {
     name: 'mock-api',
     configureServer(server) {
-      server.middlewares.use('/v1', (req, res) => {
+      server.middlewares.use('/v1', async (req, res) => {
         const url = req.url ?? ''
-        const json = (code: number, body: unknown) => {
+        const m = req.method ?? 'GET'
+        const json = (code: number, b?: unknown) => {
           res.statusCode = code
+          if (b === undefined) return res.end()
           res.setHeader('Content-Type', 'application/json')
-          res.end(JSON.stringify(body))
+          res.end(JSON.stringify(b))
         }
-        if (url.startsWith('/subjects')) return json(200, [{ id: 's1', name: 'Fixture course', weekly_hours: 3, level: 'intermediate', weight: 1 }])
-        if (url.startsWith('/reviews/due')) {
-          return json(200, [
-            { concept_id: C1, concept_name: 'Exponential races', card_id: null, card: null, due_at: iso(0), reason: 'Due today' },
-            { concept_id: C2, concept_name: 'Practice: pretend the checker is down', card_id: null, card: null, due_at: iso(0), reason: 'Shows the "could not check" screen' },
-          ])
+        const say = (code: number, error: string) => json(code, { error })
+        const raw = m === 'GET' ? Buffer.alloc(0) : await body(req)
+        const b = () => JSON.parse(raw.toString() || '{}')
+        const seg = url.split('?')[0].split('/').filter(Boolean) // "/pages/x/ready" -> ["pages","x","ready"]
+
+        if (m === 'POST' && url === '/auth/redeem') {
+          if (b().token === 'used') return say(404, 'This invite link does not work.')
+          signedIn = true
+          return json(200, { id: 'u1', name: 'Dino', time_zone: 'America/Toronto' })
         }
-        if (req.method === 'POST' && url === '/teach/sessions') {
-          let b = ''
-          req.on('data', (d) => (b += d))
-          req.on('end', () => {
-            lastConcept = JSON.parse(b || '{}').concept_id ?? C1
-            json(201, { id: 'mock-session', concept_id: lastConcept })
+        if (!signedIn) return say(401, 'Please sign in.')
+        if (url === '/auth/sign-out') { signedIn = false; return json(204) }
+        if (url === '/me') return json(200, { id: 'u1', name: 'Dino', time_zone: 'America/Toronto' })
+
+        if (url === '/today') {
+          return json(200, {
+            date: iso(0),
+            courses: courses.map((c) => {
+              const items = concepts.filter((k) => k.subject_id === c.id).map(item)
+              return { subject_id: c.id, name: c.name, minutes: items.reduce((s, i) => s + i.minutes, 0), items }
+            }),
+            study_time: courses.map(hours),
           })
-          return
+        }
+        if (seg[0] === 'week') {
+          const start = new Date(`${new URL(url, 'http://x').searchParams.get('week')}T00:00:00`)
+          return json(200, {
+            week_start: start.toISOString(),
+            courses: courses.map(hours),
+            days: [0, 1, 2, 3, 4, 5, 6].map((d) => ({
+              date: new Date(start.getTime() + d * day).toISOString(),
+              items: d % 2 ? [] : concepts.slice(0, 1).map(item),
+            })),
+            notes: ['Exponential races moved to Tuesday: 1 point was not right.'],
+          })
+        }
+        if (url === '/courses') {
+          if (m === 'POST') { const c = { ...b(), id: newId('course'), weight: 1 }; courses.push(c); return json(201, c) }
+          return json(200, courses)
+        }
+        if (seg[0] === 'courses') {
+          const c = courses.find((x) => x.id === seg[1])
+          if (!c) return say(404, 'We could not find that course.')
+          if (seg[2] === 'view') {
+            const notes = uploads.filter((u) => u.subject_id === c.id).map(upStatus)
+            const firstPage = pages[0]
+            return json(200, {
+              course: c, notes,
+              cards: concepts.filter((k) => k.subject_id === c.id).map((k, i) => ({
+                concept_id: k.id, name: k.name, recall: i ? null : 0.8, explanation: i ? null : 0.5,
+                next_due: i ? null : iso(1), claims: claims.filter((x) => x.concept_id === k.id),
+              })),
+              mistakes: c.id !== S1 ? [] : [{ session_id: 'mock-session', concept_id: C1, claim_id: 'c2', student_text: 'The chance X finishes first is $b/(a+b)$.',
+                label: 'contradicted', quote: 'the chance that X finishes before Y is a / (a + b).', source_id: 'src1',
+                page_id: firstPage?.id ?? null, page: firstPage ? 1 : null, created_at: iso(-1) }],
+            })
+          }
+          if (seg[2] === 'concepts' && m === 'POST') {
+            const k = { id: newId('concept'), subject_id: c.id, name: b().name }
+            concepts.push(k); return json(201, { ...k, claims: [] })
+          }
+          if (seg[2] === 'blocks') return json(200, blocks.filter((x) => x.subject_id === c.id))
+          if (seg[2] === 'uploads' && m === 'POST') {
+            const f = await new Request('http://x', { method: 'POST', headers: { 'content-type': req.headers['content-type'] ?? '' }, body: new Uint8Array(raw) }).formData()
+            const file = f.get('file') as File | null
+            const text = (f.get('text') as string | null) ?? ''
+            if (!file && !text.trim()) return say(400, 'Please add a PDF or paste some text.')
+            const u: Rec = { id: newId('upload'), subject_id: c.id, filename: f.get('filename'), status: 'reading', error: '', source_id: newId('src'), pages_total: 0, pages_ready: 0, created_at: iso(0) }
+            uploads.push(u)
+            setTimeout(() => { // pretend to read the file in the background
+              const texts = file ? ['Page one text read from the PDF.', 'Page two text read from the PDF.'] : [text]
+              texts.forEach((t, i) => pages.push({ id: newId('page'), upload_id: u.id, number: i + 1, raw_text: t, edited_text: t, status: 'needs_checking', has_image: !!file, updated_at: iso(0) }))
+              u.status = 'needs_checking'; upStatus(u)
+            }, 1000)
+            return json(202, u)
+          }
+          if (seg[2] === 'uploads') return json(200, uploads.filter((u) => u.subject_id === c.id).map(upStatus))
+        }
+        if (seg[0] === 'uploads') {
+          const u = uploads.find((x) => x.id === seg[1])
+          if (!u) return say(404, 'We could not find that file.')
+          if (seg[2] === 'pages') return json(200, pages.filter((p) => p.upload_id === u.id))
+          return json(200, upStatus(u))
+        }
+        if (seg[0] === 'pages') {
+          const p = pages.find((x) => x.id === seg[1])
+          if (!p) return say(404, 'We could not find that page.')
+          const u = uploads.find((x) => x.id === p.upload_id)!
+          if (seg[2] === 'image') { res.setHeader('Content-Type', 'image/png'); return res.end(PNG) }
+          if (seg[2] === 'ready') {
+            p.status = 'ready'
+            p.edited_text.split(/\n\s*\n/).filter((t: string) => t.trim()).forEach((t: string, i: number) =>
+              blocks.push({ id: newId('block'), subject_id: u.subject_id, page_id: p.id, source_id: u.source_id, page: p.number, ordinal: i, kind: 'text', text_md: t.trim(), text_norm: t.trim() }))
+            return json(200, p)
+          }
+          if (seg[2] === 'unready') {
+            const mine = blocks.filter((x) => x.page_id === p.id).map((x) => x.id)
+            if (claims.some((c) => mine.includes(c.anchor?.block_id))) return say(400, 'A key idea quotes this page, so it has to stay Ready.')
+            p.status = 'needs_checking'
+            blocks.splice(0, blocks.length, ...blocks.filter((x) => x.page_id !== p.id))
+            return json(200, p)
+          }
+          if (m === 'PATCH') { p.edited_text = b().edited_text; p.updated_at = iso(0) }
+          return json(200, p)
+        }
+        if (seg[0] === 'concepts' && seg[2] === 'claims') {
+          if (m === 'POST') {
+            const i = b()
+            const blk = blocks.find((x) => x.id === i.anchor?.block_id)
+            if (!blk || !i.anchor.quote || !blk.text_md.includes(i.anchor.quote)) return say(400, 'These words are not in that passage. Copy them exactly from your notes.')
+            const c = { id: newId('claim'), concept_id: seg[1], text: i.text, source_id: blk.source_id, locator: `page ${blk.page}`, required: i.required, kind: i.kind, anchor: i.anchor }
+            claims.push(c); return json(201, c)
+          }
+          return json(200, claims.filter((c) => c.concept_id === seg[1]))
+        }
+        if (m === 'POST' && url === '/teach/sessions') {
+          lastConcept = b().concept_id ?? C1
+          return json(201, { id: 'mock-session', concept_id: lastConcept })
         }
         if (url.endsWith('/turns')) {
           res.setHeader('Content-Type', 'text/event-stream')
@@ -65,8 +213,10 @@ export function mockApi(): Plugin {
           }, 80)
           return
         }
+        if (url.endsWith('/self-grades')) return json(204)
+        if (url.endsWith('/disputes')) return json(201, { id: newId('dispute'), session_id: 'mock-session', ...b(), user_id: 'u1', status: 'open', created_at: iso(0) })
         if (url.endsWith('/finish') || url.endsWith('/report')) return json(200, report(lastConcept))
-        json(404, { error: 'not found' })
+        say(404, 'not found')
       })
     },
   }

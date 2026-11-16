@@ -1,39 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Math } from './Math'
-import { DueItem, Label, Report, finish, listConcepts, listSubjects, sendTurn, startSession } from './api'
+import { SIGNED_OUT, Today, TodayItem, User, WeekPlan, getToday, getWeek, me, redeem, signOut, startSession } from './api'
+import { Session, TeachFlow } from './Teach'
+import { Course, Courses, PageCheck } from './Course'
 
-const WORDS: Record<Label, string> = {
-  supported: 'Correct',
-  partial: 'Partly right',
-  contradicted: 'Not right',
-  absent: 'Not mentioned',
-}
-// App imports a component named Math, so avoid the global Math here
-const fmtTime = (n: number) => `${(n - (n % 60)) / 60}:${String(n % 60).padStart(2, '0')}`
-const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
-
-type Stage = { s: 'pick' } | { s: 'teach'; id: string; name: string } | { s: 'grade'; id: string; name: string } | { s: 'report'; r: Report; id: string; ticks: number; total: number }
-
-export function App() {
-  const [stage, setStage] = useState<Stage>({ s: 'pick' })
-  const [points, setPoints] = useState<string[]>([])
-  return (
-    <main>
-      <h1>Teach the AI student</h1>
-      {stage.s === 'pick' && <Pick onStart={(id, name) => { setPoints([]); setStage({ s: 'teach', id, name }) }} />}
-      {stage.s === 'teach' && (
-        <Teach {...stage} points={points} onSent={(t) => setPoints((p) => [...p, t])}
-          onFinish={() => setStage({ s: 'grade', id: stage.id, name: stage.name })} />
-      )}
-      {stage.s === 'grade' && (
-        <Grade {...stage} points={points} onDone={(r, ticks) => setStage({ s: 'report', r, id: stage.id, ticks, total: points.length })} />
-      )}
-      {stage.s === 'report' && <ReportView r={stage.r} id={stage.id} guess={stage.ticks} total={stage.total} onAgain={() => setStage({ s: 'pick' })} />}
-    </main>
-  )
-}
-
-const dayWord = { weekday: 'long', month: 'short', day: 'numeric' } as const
+const dayWord = { weekday: 'short', month: 'short', day: 'numeric' } as const
 const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString()
 
 /** "Due today", or "Due Mon, Nov 16"; soon = due within 2 days (or already late). */
@@ -43,172 +13,172 @@ export function dueText(iso: string, now = new Date()): { text: string; soon: bo
   return { soon, text: sameDay(d, now) || d < now ? 'Due today' : `Due ${d.toLocaleDateString(undefined, dayWord)}` }
 }
 
-function Pick({ onStart }: { onStart: (id: string, name: string) => void }) {
-  const [items, setItems] = useState<DueItem[] | null>(null)
-  const [course, setCourse] = useState('Your topics')
-  const [err, setErr] = useState('')
-  const [busy, setBusy] = useState(false)
+/** Monday of the week holding `d`, as YYYY-MM-DD in local time. */
+export function mondayOf(d = new Date()): string {
+  const m = new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7))
+  return `${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, '0')}-${String(m.getDate()).padStart(2, '0')}`
+}
+
+const hours = (h: number) => `${h.toFixed(1)} h`
+const route = () => location.hash.slice(2).split('/') // "#/course/abc" -> ["course", "abc"]
+
+export type Start = (concept_id: string, name: string) => Promise<void>
+
+export function App() {
+  const [user, setUser] = useState<User | null | 'out' | 'bad-link' | 'down'>(null)
+  const [path, setPath] = useState(route)
+  const [session, setSession] = useState<Session | null>(null)
   useEffect(() => {
-    listConcepts().then(setItems, () => setErr('We could not load the topics. Please check the server is running and refresh the page.'))
-    // The API does not say which course a topic belongs to, so name the folder only when there is one course.
-    listSubjects().then((s) => s.length === 1 && setCourse(s[0].name), () => {})
+    const out = () => setUser('out')
+    const nav = () => setPath(route())
+    window.addEventListener(SIGNED_OUT, out)
+    window.addEventListener('hashchange', nav)
+    // cmd/invite prints <site>/invite#<token>; the hash keeps the token out of server logs
+    const token = location.pathname === '/invite' ? location.hash.slice(1) : ''
+    if (token) {
+      redeem(token).then((u) => { history.replaceState(null, '', '/'); setUser(u) }, () => setUser('bad-link'))
+    } else me().then(setUser, () => setUser((u) => (u === 'out' ? u : 'down'))) // a 401 already said 'out'
+    return () => { window.removeEventListener(SIGNED_OUT, out); window.removeEventListener('hashchange', nav) }
   }, [])
-  const go = async (d: DueItem) => {
-    setBusy(true)
-    try { onStart((await startSession(d.concept_id)).id, d.concept_name) }
-    catch { setErr('We could not start the session. Please try again.'); setBusy(false) }
-  }
-  return (
-    <>
-      <h2>{new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</h2>
-      <p>Pick a topic, then explain it in your own words. The AI student will ask you one question at a time. You will not see the course notes until you finish.</p>
-      {err && <div className="error" role="alert">{err}</div>}
-      {items === null && !err && <p>Loading topics...</p>}
-      {items?.length === 0 && <p>There are no topics to practise right now.</p>}
-      {!!items?.length && (
-        <details className="folder" open>
-          <summary>{course} ({items.length} {items.length === 1 ? 'topic' : 'topics'})</summary>
-          <ul className="plain">
-            {items.map((d) => {
-              const due = dueText(d.due_at)
-              return (
-                <li key={d.concept_id} className="topic">
-                  <div><strong>{d.concept_name}</strong>
-                    <div><small className={due.soon ? 'soon' : ''}>{due.text}</small> <small>{d.reason}</small></div></div>
-                  <button disabled={busy} onClick={() => go(d)} aria-label={`Start ${d.concept_name}`}>Start</button>
-                </li>
-              )
-            })}
-          </ul>
-        </details>
-      )}
-    </>
-  )
-}
 
-function Teach({ id, name, points, onSent, onFinish }: { id: string; name: string; points: string[]; onSent: (t: string) => void; onFinish: () => void }) {
-  const [text, setText] = useState('')
-  const [q, setQ] = useState('')
-  const [streaming, setStreaming] = useState(false)
-  const [err, setErr] = useState('')
-  const [secs, setSecs] = useState(0)
-  useEffect(() => { const t = setInterval(() => setSecs((n) => n + 1), 1000); return () => clearInterval(t) }, [])
-  const send = async () => {
-    const t = text.trim()
-    if (!t) return
-    setErr(''); setQ(''); setStreaming(true)
-    let failed = false
-    try {
-      await sendTurn(id, t, (e) => {
-        if (e.event === 'token') setQ((s) => s + e.data.text)
-        if (e.event === 'error') failed = true
-      })
-    } catch { failed = true }
-    setStreaming(false)
-    if (failed) setErr('The AI student could not answer just now. Your words are kept. Press Send to try again.')
-    else { onSent(t); setText('') }
-  }
-  return (
-    <>
-      <h2>{name}</h2>
-      <p className="row"><small>Course notes are hidden until you finish.</small>
-        <small role="timer" aria-label="Time spent">Time: {fmtTime(secs)}</small></p>
-      <div className="card question" aria-live="polite">
-        <strong>The AI student asks:</strong>
-        <div>{streaming && !q ? 'Thinking...' : q ? <Math text={q} /> : 'Start by explaining the topic below. Use $...$ around formulas.'}</div>
-        <div className="note">The AI student only asks questions. It never corrects or teaches.</div>
-      </div>
-      {err && <div className="error" role="alert">{err}</div>}
-      <label htmlFor="ed"><strong>Your explanation</strong></label>
-      <textarea id="ed" value={text} onChange={(e) => setText(e.target.value)} placeholder="Example: The tail is $P(T>t)=e^{-at}$." />
-      <div className="note">Put formulas between dollar signs, like $x^2$.</div>
-      <div className="card preview" aria-label="Preview"><small>Preview</small><div><Math text={text || '(your formulas appear here)'} /></div></div>
-      <div className="row">
-        <button disabled={streaming || !text.trim()} onClick={send}>Send</button>
-        <button className="plain" disabled={streaming || points.length === 0} onClick={onFinish}>I am done, check my explanation</button>
-      </div>
-      {points.length === 0 && <small>Send at least one explanation before finishing.</small>}
-    </>
-  )
-}
-
-type Guess = 'right' | 'unsure' | 'wrong'
-const GUESS: [Guess, string][] = [['right', 'Right'], ['unsure', 'Not sure'], ['wrong', 'Wrong']]
-
-function Grade({ id, points, onDone }: { id: string; name: string; points: string[]; onDone: (r: Report, ticks: number) => void }) {
-  const [on, setOn] = useState<Guess[]>(points.map(() => 'unsure'))
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState('')
-  const go = async () => {
-    setBusy(true); setErr('')
-    try { onDone(await finish(id), on.filter((g) => g === 'right').length) }
-    catch { setErr('We could not check your explanation. Nothing was lost. Please try again.'); setBusy(false) }
-  }
-  return (
-    <>
-      <h2>How do you feel about this concept?</h2>
-      <p>For each point, say whether you think it was right, not sure, or wrong.</p>
-      <p className="note">Only for you. Your review dates do not change.</p>
-      <ul className="plain">
-        {points.map((p, i) => (
-          <li key={i} className="card">
-            <fieldset className="grade">
-              <legend>Point {i + 1}: <Math text={p} /></legend>
-              {GUESS.map(([v, w]) => (
-                <label key={v}>
-                  <input type="radio" name={`g${i}`} checked={on[i] === v} onChange={() => setOn(on.map((x, j) => (j === i ? v : x)))} />
-                  {w}
-                </label>
-              ))}
-            </fieldset>
-          </li>
-        ))}
-      </ul>
-      {err && <div className="error" role="alert">{err}</div>}
-      <button disabled={busy} onClick={go}>{busy ? 'Checking...' : 'Show my results'}</button>
-    </>
-  )
-}
-
-function ReportView({ r: first, id, guess, total, onAgain }: { r: Report; id: string; guess: number; total: number; onAgain: () => void }) {
-  const [r, setR] = useState(first)
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState('')
-  const retry = async () => {
-    setBusy(true); setErr('')
-    try { setR(await finish(id)) } catch { setErr('The check is still not working. Your explanation is saved. Please try again later.') }
-    setBusy(false)
-  }
-  const unchecked = r.status === 'unchecked'
-  const found = r.results.filter((c) => c.label === 'supported').length
-  const before = r.schedule && new Date(r.schedule.due_before).getFullYear() > 2000 ? r.schedule.due_before : null
-  return (
-    <>
-      <h2>Your results</h2>
-      {unchecked ? (
-        <div className="banner" role="status">
-          <strong>Not checked yet.</strong> Nothing changed: your review date stays the same and your explanation is saved.
-          <div className="row"><button disabled={busy} onClick={retry}>{busy ? 'Trying...' : 'Try the check again'}</button>
-            <button className="plain" onClick={onAgain}>Try later</button></div>
-        </div>
-      ) : r.schedule && (
+  if (user === null) return <main><p>Loading...</p></main>
+  if (user === 'down') return <main><div className="error" role="alert">We could not reach the server. Please check your connection and refresh the page.</div></main>
+  if (user === 'out' || user === 'bad-link') {
+    return (
+      <main>
+        <h1>Space Repetition</h1>
         <div className="card" role="status">
-          Next review: {before && <><s>{day(before)}</s> &rarr; </>}<strong>{day(r.schedule.due_after)}</strong>
+          {user === 'bad-link'
+            ? <p><strong>This link does not work.</strong> It may have been used already. Please ask the person who sent it for a new one.</p>
+            : <p><strong>You are signed out.</strong> To sign in, open the invite link you were sent.</p>}
         </div>
-      )}
-      {err && <div className="error" role="alert">{err}</div>}
-      <p>Your guess: you marked {guess} of {total} points as right.{!unchecked && <> The check found {found} correct.</>}</p>
+      </main>
+    )
+  }
+
+  const start: Start = async (concept_id, name) => setSession({ id: (await startSession(concept_id)).id, concept_id, name })
+  if (session) {
+    return <main><TeachFlow session={session} onExit={() => { setSession(null); location.hash = '#/' }} /></main>
+  }
+  const [page, id] = path
+  return (
+    <>
+      <nav className="topbar" aria-label="Main">
+        <a href="#/" aria-current={!page || undefined}>Today</a>
+        <a href="#/courses" aria-current={['courses', 'course', 'upload', 'page'].includes(page) || undefined}>Courses</a>
+        <a href="#/week" aria-current={page === 'week' || undefined}>Week</a>
+        <button className="plain" onClick={() => signOut().finally(() => setUser('out'))}>Sign out</button>
+      </nav>
+      <main>
+        {page === 'week' ? <Week />
+          : page === 'courses' ? <Courses />
+          : page === 'course' ? <Course id={id} start={start} />
+          : page === 'upload' ? <PageCheck uploadId={id} />
+          : page === 'page' ? <PageCheck pageId={id} />
+          : <TodayView start={start} />}
+      </main>
+    </>
+  )
+}
+
+/** Start button with its own busy and error state. */
+export function StartButton({ id, name, start }: { id: string; name: string; start: Start }) {
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  return (
+    <span>
+      <button disabled={busy} aria-label={`Start ${name}`}
+        onClick={() => { setBusy(true); setErr(''); start(id, name).catch(() => { setErr('We could not start. Please try again.'); setBusy(false) }) }}>Start</button>
+      {err && <span className="error" role="alert">{err}</span>}
+    </span>
+  )
+}
+
+function HoursBox({ rows, title }: { rows: { subject_id: string; name: string; hours_used: number; hours_budget: number; reason: string }[]; title: string }) {
+  return (
+    <aside className="card" aria-label={title}>
+      <h3>{title}</h3>
+      {rows.map((c) => (
+        <div key={c.subject_id} className="hours">
+          <div className="row"><span>{c.name}</span><strong>{c.hours_used.toFixed(1)} / {hours(c.hours_budget)}</strong></div>
+          <progress max={c.hours_budget || 1} value={Math.min(c.hours_used, c.hours_budget || 1)} aria-label={`${c.name} hours`} />
+          {c.reason && <div className="note">{c.reason}</div>}
+        </div>
+      ))}
+    </aside>
+  )
+}
+
+function TodayView({ start }: { start: Start }) {
+  const [t, setT] = useState<Today | null>(null)
+  const [err, setErr] = useState('')
+  useEffect(() => { getToday().then(setT, () => setErr('We could not load today. Please check your connection and refresh the page.')) }, [])
+  if (err) return <div className="error" role="alert">{err}</div>
+  if (!t) return <p>Loading...</p>
+  return (
+    <>
+      <h1>{new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</h1>
+      <div className="split">
+        <div>
+          {t.courses.length === 0 && <p>Nothing to study today. Add a course and its notes under Courses.</p>}
+          {t.courses.map((c) => (
+            <details key={c.subject_id} className="folder" open>
+              <summary>{c.name} <small>{c.minutes} min</small></summary>
+              <ul className="plain">
+                {c.items.length === 0 && <li className="topic"><small>Nothing due in this course today.</small></li>}
+                {c.items.map((it) => <TopicRow key={it.concept_id + it.kind} it={it} start={start} />)}
+              </ul>
+            </details>
+          ))}
+        </div>
+        {t.study_time.length > 0 && <HoursBox rows={t.study_time} title="Study Time" />}
+      </div>
+    </>
+  )
+}
+
+function TopicRow({ it, start }: { it: TodayItem; start: Start }) {
+  const due = dueText(it.due_at)
+  return (
+    <li className="topic">
+      <div><strong>{it.concept_name}</strong>
+        <div><small>{it.kind === 'teach' ? 'Teach' : 'Recall'}, {it.minutes} min. </small>
+          <small className={due.soon ? 'soon' : ''}>{due.text}</small></div>
+        {it.reason && <div className="note">{it.reason}</div>}</div>
+      <StartButton id={it.concept_id} name={it.concept_name} start={start} />
+    </li>
+  )
+}
+
+function Week() {
+  const [w, setW] = useState<WeekPlan | null>(null)
+  const [err, setErr] = useState('')
+  useEffect(() => { getWeek(mondayOf()).then(setW, () => setErr('We could not load this week. Please refresh the page.')) }, [])
+  if (err) return <div className="error" role="alert">{err}</div>
+  if (!w) return <p>Loading...</p>
+  const first = new Date(w.week_start)
+  const last = new Date(first.getTime() + 6 * 86400000)
+  const md = { month: 'short', day: 'numeric' } as const
+  const now = new Date()
+  return (
+    <>
+      <h1>{first.toLocaleDateString(undefined, md)} to {last.toLocaleDateString(undefined, md)}</h1>
+      <HoursBox rows={w.courses} title="Hours per course" />
+      <h2>Schedule:</h2>
       <ul className="plain">
-        {r.results.map((c, i) => (
-          <li key={i} className="card">
-            <span className={`label ${c.label}`}>{WORDS[c.label]}</span>
-            <p>{c.student_text ? <>You said: <Math text={c.student_text} /></> : 'You did not mention this idea.'}</p>
-            {c.correction && <p><strong>Correction:</strong> <Math text={c.correction} /></p>}
-            {c.citation && <blockquote>&ldquo;{c.citation.quote}&rdquo;<br /><small>{c.citation.locator}</small></blockquote>}
-          </li>
-        ))}
+        {w.days.map((d) => {
+          const today = sameDay(new Date(d.date), now)
+          return (
+            <li key={d.date} className={`card${today ? ' today' : ''}`} aria-current={today ? 'date' : undefined}>
+              <strong>{new Date(d.date).toLocaleDateString(undefined, { weekday: 'long', ...md })}{today && ' (today)'}</strong>
+              {d.items.length === 0 ? <div><small>Nothing planned.</small></div> : (
+                <ul>{d.items.map((it) => <li key={it.concept_id + it.kind}>{it.concept_name}: {it.kind === 'teach' ? 'teach' : 'recall'}, {it.minutes} min</li>)}</ul>
+              )}
+            </li>
+          )
+        })}
       </ul>
-      {!unchecked && <button onClick={onAgain}>Pick another topic</button>}
+      {w.notes.length > 0 && <><h2>Note:</h2><ul>{w.notes.map((n, i) => <li key={i}>{n}</li>)}</ul></>}
     </>
   )
 }

@@ -1,5 +1,11 @@
 import { expect, test, Page } from '@playwright/test'
 
+// Skip until the Go API serves the v3 screens (P1-API); the app now opens on /v1/me and /v1/today.
+test.beforeEach(async ({ request }) => {
+  const r = await request.get('http://localhost:18080/v1/today')
+  test.skip(r.status() === 404, 'The Go API does not serve /v1/today yet (P1-API)')
+})
+
 // Both tests need the fixture pack seeded. Each test uses its own topic, so run them in one DB once.
 async function teach(page: Page, base: string, topic: string) {
   await page.goto(base)
@@ -10,7 +16,7 @@ async function teach(page: Page, base: string, topic: string) {
   await expect(page.locator('.question .katex, .question')).toContainText('The AI student asks:')
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled() // textarea cleared after the turn
   await page.getByRole('button', { name: 'I am done, check my explanation' }).click()
-  await page.getByLabel('Right').check()
+  await page.getByLabel('Right').first().check()
   await page.getByRole('button', { name: 'Show my results' }).click()
 }
 
