@@ -39,6 +39,35 @@ func fakeHandler() http.Handler {
 // notServed lists spec operations Phase 0 does not serve (P0-INT skips digest and plan editing).
 var notServed = map[string]bool{
 	"GET /v1/plan": true, "PATCH /v1/plan/blocks/{id}": true, "PATCH /v1/cards/{id}": true, "GET /v1/digest/today": true,
+	// Contract v3. P1-API serves these.
+	"DELETE /v1/claims/{id}":                   true,
+	"DELETE /v1/courses/{id}":                  true,
+	"GET /v1/concepts/{id}/claims":             true,
+	"GET /v1/courses":                          true,
+	"GET /v1/courses/{id}":                     true,
+	"GET /v1/courses/{id}/blocks":              true,
+	"GET /v1/courses/{id}/uploads":             true,
+	"GET /v1/courses/{id}/view":                true,
+	"GET /v1/me":                               true,
+	"GET /v1/pages/{id}":                       true,
+	"GET /v1/pages/{id}/image":                 true,
+	"GET /v1/today":                            true,
+	"GET /v1/uploads/{id}":                     true,
+	"GET /v1/uploads/{id}/pages":               true,
+	"GET /v1/week":                             true,
+	"PATCH /v1/claims/{id}":                    true,
+	"PATCH /v1/courses/{id}":                   true,
+	"PATCH /v1/pages/{id}":                     true,
+	"POST /v1/auth/redeem":                     true,
+	"POST /v1/auth/sign-out":                   true,
+	"POST /v1/concepts/{id}/claims":            true,
+	"POST /v1/courses":                         true,
+	"POST /v1/courses/{id}/concepts":           true,
+	"POST /v1/courses/{id}/uploads":            true,
+	"POST /v1/pages/{id}/ready":                true,
+	"POST /v1/pages/{id}/unready":              true,
+	"POST /v1/teach/sessions/{id}/disputes":    true,
+	"POST /v1/teach/sessions/{id}/self-grades": true,
 }
 
 func loadSpec(t *testing.T) *openapi3.T {
