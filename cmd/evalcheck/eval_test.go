@@ -226,7 +226,7 @@ func TestHumanNoMajorityIsAMiss(t *testing.T) {
 		return nil
 	}
 	got := r.human()
-	want(t, got, fail, "marked contradicted: 2 of 3", "flagged: 0 of 1", "marked absent: 2 of 3", "Unchecked (no majority): 1 of 2 explanations", "| unchecked |", "| supported | 0 | 0 | 0 | 0 | 2 |")
+	want(t, got, fail, "marked contradicted: 2 of 3", "flagged: 0 of 1", "marked absent: 2 of 3", "Unchecked (no majority): 1 of 2 explanations", "| unchecked |", "| supported | 1 | 0 | 0 | 0 | 2 |")
 	if p := strings.Join(got.Private, ""); !strings.Contains(p, "e1: no majority") || !strings.Contains(p, "[absent partial contradicted]") {
 		t.Errorf("private details must name the explanation and the votes: %q", p)
 	}
