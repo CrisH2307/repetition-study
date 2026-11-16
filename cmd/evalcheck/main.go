@@ -49,6 +49,7 @@ func run(args []string, stdout io.Writer) error {
 	dataDir := fs.String("data", "eval/data", "directory with the eval sets")
 	lblPath := fs.String("labels", "", "frozen human labels (default <data>/labels_final.csv)")
 	split := fs.String("split", "test", "which part of split.json to score: test, dev or all")
+	disputes := fs.String("disputes", "", "upheld disputes from scripts/disputes_to_eval.py, added as dev cases (not with --split test)")
 	outDir := fs.String("out", "eval/results", "where gate.md is written")
 	privDir := fs.String("private-out", "content/private/eval", "where details that can hold course text are written (never committed)")
 	maxCost := fs.Float64("max-cost", 5, "stop before metered cost passes this many USD, all models and suites together (0 = no cap)")
@@ -85,6 +86,11 @@ func run(args []string, stdout io.Writer) error {
 	d, err := loadData(up, *dataDir, *lblPath, *split)
 	if err != nil {
 		return err
+	}
+	if *disputes != "" {
+		if err := addDisputes(d, *disputes); err != nil {
+			return err
+		}
 	}
 	real := slices.ContainsFunc(all, func(m string) bool { return !offline(m) })
 	for _, s := range d.Unit.Sources {

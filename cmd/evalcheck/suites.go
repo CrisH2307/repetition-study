@@ -221,6 +221,9 @@ func (r *runner) human() result {
 		}
 		for _, k := range c.Claims {
 			gold, pred := r.d.Labels[labelKey{e.ID, k.ID}], got[k.ID]
+			if gold == "" { // a dispute case labels only the claim that was disputed
+				continue
+			}
 			if conf[gold] == nil {
 				conf[gold] = map[domain.ClaimLabel]int{}
 			}
