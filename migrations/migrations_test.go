@@ -133,3 +133,63 @@ func TestTeachBackIsUniquePerSession(t *testing.T) {
 		must(err)
 	}
 }
+
+// Needs a migrated database. The v3 checks reject half-filled rows.
+func TestContractV3Checks(t *testing.T) {
+	url := os.Getenv("DATABASE_URL")
+	if url == "" {
+		t.Skip("DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close(ctx)
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx) // leaves no rows
+
+	var subjectID, conceptID, sourceID string
+	if err := tx.QueryRow(ctx, `WITH u AS (INSERT INTO users (name) VALUES ('v3') RETURNING id)
+		INSERT INTO subjects (user_id, name, weekly_hours, level) SELECT id, 's', 1, 'beginner' FROM u RETURNING id`).Scan(&subjectID); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.QueryRow(ctx, `INSERT INTO concepts (subject_id, name) VALUES ($1, 'c') RETURNING id`, subjectID).Scan(&conceptID); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.QueryRow(ctx, `INSERT INTO sources (kind, title, text, subject_id) VALUES ('course', 't', '', $1) RETURNING id`, subjectID).Scan(&sourceID); err != nil {
+		t.Fatal(err)
+	}
+
+	ok := map[string]string{
+		"phase 0 claim": `INSERT INTO claims (concept_id, text, source_id) VALUES ('` + conceptID + `', 't', '` + sourceID + `')`,
+		"pasted upload": `INSERT INTO uploads (subject_id, filename, pasted_text) VALUES ('` + subjectID + `', 'f', 'x')`,
+		"unused invite": `INSERT INTO invites (token_hash, name) VALUES ('\x01', 'n')`,
+	}
+	bad := map[string]string{
+		"anchor without quote": `INSERT INTO claims (concept_id, text, source_id, anchor_block_id) VALUES ('` + conceptID + `', 't', '` + sourceID + `', gen_random_uuid())`,
+		"unknown kind":         `INSERT INTO claims (concept_id, text, source_id, kind) VALUES ('` + conceptID + `', 't', '` + sourceID + `', 'vibe')`,
+		"upload with neither":  `INSERT INTO uploads (subject_id, filename) VALUES ('` + subjectID + `', 'f')`,
+		"upload with both":     `INSERT INTO uploads (subject_id, filename, pdf, pasted_text) VALUES ('` + subjectID + `', 'f', '\x00', 'x')`,
+		"used invite no user":  `INSERT INTO invites (token_hash, name, used_at) VALUES ('\x02', 'n', now())`,
+		"bad upload status":    `INSERT INTO uploads (subject_id, filename, pasted_text, status) VALUES ('` + subjectID + `', 'f', 'x', 'done')`,
+	}
+	for name, q := range ok {
+		if _, err := tx.Exec(ctx, q); err != nil {
+			t.Errorf("%s rejected: %v", name, err)
+		}
+	}
+	for name, q := range bad {
+		sp, err := tx.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := sp.Exec(ctx, q); err == nil {
+			t.Errorf("%s accepted", name)
+		}
+		sp.Rollback(ctx)
+	}
+}
