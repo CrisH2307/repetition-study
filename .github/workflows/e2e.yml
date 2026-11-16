@@ -1,0 +1,41 @@
+name: e2e
+on:
+  pull_request:
+  push:
+    branches: [qa, main]
+permissions:
+  contents: read
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: repetition
+          POSTGRES_PASSWORD: repetition
+          POSTGRES_DB: repetition
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U repetition -d repetition"
+          --health-interval 2s --health-timeout 3s --health-retries 15
+    env:
+      DATABASE_URL: postgres://repetition:repetition@localhost:5432/repetition?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: go run ./cmd/migrate
+      - run: go run ./cmd/seed -pack content/fixture/unit.json
+      - run: npm ci && npm run build
+        working-directory: web
+      - run: npx playwright install --with-deps chromium
+        working-directory: web
+      - run: npx playwright test
+        working-directory: web
