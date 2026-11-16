@@ -30,6 +30,7 @@ type fakeCk struct {
 	meter *llm.Meter
 	seen  []domain.CheckInput
 	err   error
+	errIf func(in domain.CheckInput) error // per-input failure, checked after err
 }
 
 func (f *fakeCk) CheckDetailed(_ context.Context, in domain.CheckInput) (checker.Outcome, error) {
@@ -37,6 +38,11 @@ func (f *fakeCk) CheckDetailed(_ context.Context, in domain.CheckInput) (checker
 	f.meter.Record(llm.Call{Model: "m", In: 1000, Out: 100, Latency: time.Second})
 	if f.err != nil {
 		return checker.Outcome{}, f.err
+	}
+	if f.errIf != nil {
+		if err := f.errIf(in); err != nil {
+			return checker.Outcome{}, err
+		}
 	}
 	return checker.Outcome{Results: f.fn(in)}, nil
 }
@@ -207,6 +213,27 @@ func TestHuman(t *testing.T) {
 	if len(ck.seen) != 0 {
 		t.Error("a skipped suite must not call the model")
 	}
+}
+
+// A 3-way split on one explanation is scored as a miss on every claim, and the
+// suite goes on. Any other error still stops it.
+func TestHumanNoMajorityIsAMiss(t *testing.T) {
+	r, ck := testRunner(testData(), oracle)
+	ck.errIf = func(in domain.CheckInput) error {
+		if strings.Contains(in.Transcript, "bad:c1-k3") {
+			return fmt.Errorf("checker: %w for claim %q: [absent partial contradicted]", checker.ErrNoMajority, "c1-k3")
+		}
+		return nil
+	}
+	got := r.human()
+	want(t, got, fail, "marked contradicted: 2 of 3", "flagged: 0 of 1", "marked absent: 2 of 3", "Unchecked (no majority): 1 of 2 explanations", "| unchecked |", "| supported | 1 | 0 | 0 | 0 | 2 |")
+	if p := strings.Join(got.Private, ""); !strings.Contains(p, "e1: no majority") || !strings.Contains(p, "[absent partial contradicted]") {
+		t.Errorf("private details must name the explanation and the votes: %q", p)
+	}
+
+	r, ck = testRunner(testData(), oracle)
+	ck.errIf = func(domain.CheckInput) error { return errors.New("boom") }
+	want(t, r.human(), notRun, "Stopped before it finished")
 }
 
 func TestPerturb(t *testing.T) {

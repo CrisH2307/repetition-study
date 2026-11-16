@@ -261,6 +261,9 @@ func TestVote(t *testing.T) {
 				if err == nil {
 					t.Fatalf("want error, got %+v", o)
 				}
+				if tc.name == "three-way split" && !errors.Is(err, ErrNoMajority) {
+					t.Fatalf("want ErrNoMajority, got %v", err)
+				}
 				return
 			case err != nil:
 				t.Fatal(err)

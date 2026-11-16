@@ -169,6 +169,9 @@ func raw(title string, rs []domain.ClaimResult) string {
 	return "**" + title + "**\n\n```json\n" + string(j) + "\n```\n"
 }
 
+// labelUnchecked stands for a checker with no majority; it matches no real label.
+const labelUnchecked domain.ClaimLabel = "unchecked"
+
 var labelOrder = []domain.ClaimLabel{domain.LabelSupported, domain.LabelPartial, domain.LabelContradicted, domain.LabelAbsent}
 
 // spoke reports whether the checker labelled anything the student said. A
@@ -194,16 +197,28 @@ func (r *runner) human() result {
 		return skip(key, r.d.LabelsWhy)
 	}
 	res := result{Key: key}
-	var supN, supBad, wrongN, wrongHit, absN, absHit int
+	var supN, supBad, wrongN, wrongHit, absN, absHit, unchecked int
 	conf := map[domain.ClaimLabel]map[domain.ClaimLabel]int{}
 	for i, e := range r.d.Expl {
 		r.tick(key, i+1, len(r.d.Expl))
 		o, err := r.explRun(e, 0)
-		if err != nil {
-			return stopped(key, err)
-		}
 		c := r.d.Concepts[e.ConceptID]
-		got := labelsOf(c, o.Results)
+		var got map[string]domain.ClaimLabel
+		switch {
+		case errors.Is(err, checker.ErrNoMajority):
+			// Strictest scoring: every claim is a miss in whichever metric it
+			// falls in, so a split can never help the gate pass.
+			unchecked++
+			got = map[string]domain.ClaimLabel{}
+			for _, k := range c.Claims {
+				got[k.ID] = labelUnchecked
+			}
+			res.Private = append(res.Private, fmt.Sprintf("**%s: no majority, scored as a miss on every claim**\n\n%s\n", e.ID, err))
+		case err != nil:
+			return stopped(key, err)
+		default:
+			got = labelsOf(c, o.Results)
+		}
 		for _, k := range c.Claims {
 			gold, pred := r.d.Labels[labelKey{e.ID, k.ID}], got[k.ID]
 			if conf[gold] == nil {
@@ -214,7 +229,7 @@ func (r *runner) human() result {
 			switch gold {
 			case domain.LabelSupported:
 				supN++
-				if pred == domain.LabelContradicted {
+				if pred == domain.LabelContradicted || pred == labelUnchecked {
 					supBad++
 					bad = "a correct claim was marked contradicted"
 				}
@@ -240,17 +255,21 @@ func (r *runner) human() result {
 			}
 		}
 	}
-	res.Headline = fmt.Sprintf("Correct claims marked contradicted: %d of %d (%s, bar at most 3%%). Wrong claims flagged: %d of %d (%s, bar at least 80%%). Missing claims marked absent: %d of %d (%s, bar at least 85%%).",
-		supBad, supN, pct(supBad, supN), wrongHit, wrongN, pct(wrongHit, wrongN), absHit, absN, pct(absHit, absN))
+	res.Headline = fmt.Sprintf("Correct claims marked contradicted: %d of %d (%s, bar at most 3%%). Wrong claims flagged: %d of %d (%s, bar at least 80%%). Missing claims marked absent: %d of %d (%s, bar at least 85%%). Unchecked (no majority): %d of %d explanations.",
+		supBad, supN, pct(supBad, supN), wrongHit, wrongN, pct(wrongHit, wrongN), absHit, absN, pct(absHit, absN), unchecked, len(r.d.Expl))
+	cols := labelOrder
+	if unchecked > 0 {
+		cols = append(slices.Clone(labelOrder), labelUnchecked)
+	}
 	var t strings.Builder
 	t.WriteString("Rows are the people's label, columns are the checker's label.\n\n| people \\ checker |")
-	for _, l := range labelOrder {
+	for _, l := range cols {
 		fmt.Fprintf(&t, " %s |", l)
 	}
-	t.WriteString("\n|---|---|---|---|---|\n")
+	t.WriteString("\n|---" + strings.Repeat("|---", len(cols)) + "|\n")
 	for _, g := range labelOrder {
 		fmt.Fprintf(&t, "| %s |", g)
-		for _, p := range labelOrder {
+		for _, p := range cols {
 			fmt.Fprintf(&t, " %d |", conf[g][p])
 		}
 		t.WriteString("\n")
