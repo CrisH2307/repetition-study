@@ -51,7 +51,7 @@ function Teach({ id, name, points, onSent, onFinish }: Session & { points: strin
   }
   return (
     <>
-      <h2>{name}</h2>
+      <h1>{name}</h1>
       <p className="row"><small>Course notes are hidden until you finish.</small>
         <small role="timer" aria-label="Time spent">Time: {fmtTime(secs)}</small></p>
       <div className="card question" aria-live="polite">
@@ -89,10 +89,10 @@ function Grade({ id, concept_id, points, onDone }: Session & { points: string[];
     try { onDone(await finish(id), on) }
     catch { setErr('We could not check your explanation. Nothing was lost. Please try again.'); setBusy(false) }
   }
-  if (claims === null) return <p>Loading...</p>
+  if (claims === null) return <p className="loading">Loading...</p>
   return (
     <>
-      <h2>How do you feel about this concept?</h2>
+      <h1>How do you feel about this concept?</h1>
       <p>For each point, say whether you think you got it right, are not sure, or got it wrong.</p>
       <p className="note">Only for you. Your review dates do not change.</p>
       <ul className="plain">
@@ -141,7 +141,7 @@ function ReportView({ r: first, id, mine, onAgain }: { r: Report; id: string; mi
   const before = r.schedule && new Date(r.schedule.due_before).getFullYear() > 2000 ? r.schedule.due_before : null
   return (
     <>
-      <h2>Your results</h2>
+      <h1>Your results</h1>
       {unchecked ? (
         <div className="banner" role="status">
           <strong>Not checked yet.</strong> Nothing changed: your review date stays the same and your explanation is saved.

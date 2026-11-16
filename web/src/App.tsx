@@ -41,7 +41,7 @@ export function App() {
     return () => { window.removeEventListener(SIGNED_OUT, out); window.removeEventListener('hashchange', nav) }
   }, [])
 
-  if (user === null) return <main><p>Loading...</p></main>
+  if (user === null) return <main><p className="loading">Loading...</p></main>
   if (user === 'down') return <main><div className="error" role="alert">We could not reach the server. Please check your connection and refresh the page.</div></main>
   if (user === 'out' || user === 'bad-link') {
     return (
@@ -114,7 +114,7 @@ function TodayView({ start }: { start: Start }) {
   const [err, setErr] = useState('')
   useEffect(() => { getToday().then(setT, () => setErr('We could not load today. Please check your connection and refresh the page.')) }, [])
   if (err) return <div className="error" role="alert">{err}</div>
-  if (!t) return <p>Loading...</p>
+  if (!t) return <p className="loading">Loading...</p>
   return (
     <>
       <h1>{new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</h1>
@@ -155,7 +155,7 @@ function Week() {
   const [err, setErr] = useState('')
   useEffect(() => { getWeek(mondayOf()).then(setW, () => setErr('We could not load this week. Please refresh the page.')) }, [])
   if (err) return <div className="error" role="alert">{err}</div>
-  if (!w) return <p>Loading...</p>
+  if (!w) return <p className="loading">Loading...</p>
   const first = new Date(w.week_start)
   const last = new Date(first.getTime() + 6 * 86400000)
   const md = { month: 'short', day: 'numeric' } as const
