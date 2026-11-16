@@ -10,7 +10,9 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/CrisH2307/repetition-study/internal/auth"
 	"github.com/CrisH2307/repetition-study/internal/checker"
+	"github.com/CrisH2307/repetition-study/internal/course"
 	"github.com/CrisH2307/repetition-study/internal/domain"
 	"github.com/CrisH2307/repetition-study/internal/llm"
 	"github.com/CrisH2307/repetition-study/internal/planner"
@@ -29,6 +31,11 @@ type Config struct {
 	StudentModel string // model id for the AI student, "fake" works offline
 	CheckerModel string // model id for the checker, "fake" works offline, "fake-down" always fails
 	Log          *slog.Logger
+	// InsecureCookie sends the session cookie over plain http. Only for localhost dev.
+	InsecureCookie bool
+	// MonthlyCapUSD stops model checks for the rest of the calendar month once
+	// the app has spent this much (D33). 0 means no cap.
+	MonthlyCapUSD float64
 }
 
 type systemClock struct{}
@@ -40,8 +47,21 @@ func (systemClock) Now() time.Time { return time.Now().UTC() }
 func Wire(db DB, student, checkerLLM domain.LLM, checkerModel string, clock domain.Clock, log *slog.Logger) Deps {
 	sched := srs.New(db, clock)
 	chk := &checker.Checker{LLM: checkerLLM, Model: checkerModel, Log: log}
-	eng := teach.New(store.New(db), student, chk, sched, teach.Options{Log: log})
+	st := store.New(db)
+	eng := teach.New(userTeach{Store: st}, student, chk, sched, teach.Options{Log: log})
 	return Deps{
+		Auth:         &auth.Service{Store: st, Clock: clock},
+		SecureCookie: true,
+		Course:       st,
+		Reviews:      st,
+		Notes:        course.Notes{Store: st, Now: clock.Now},
+		Today:        planner.Today{},
+		Own:          pgOwner{db: db, course: st},
+		PlannerFor: func(userID string) domain.Planner {
+			p := planner.New(db, clock)
+			p.UserID = userID
+			return p
+		},
 		Teach: eng,
 		Sched: sched,
 		// srs.Scheduler.Due drops the reason (a shadowed field), so use DueWithReasons.
@@ -58,7 +78,7 @@ func Wire(db DB, student, checkerLLM domain.LLM, checkerModel string, clock doma
 			return out, nil
 		},
 		Planner:  planner.New(db, clock),
-		Subjects: pgSubjects{db},
+		Subjects: courseSubjects{st},
 		Clock:    clock,
 		Log:      log,
 	}
@@ -94,7 +114,17 @@ func Build(ctx context.Context, cfg Config) (*http.Server, func(), error) {
 		pool.Close()
 		return nil, nil, fmt.Errorf("checker model: %w", err)
 	}
+	if cfg.MonthlyCapUSD > 0 {
+		checkerLLM = &capLLM{LLM: checkerLLM, cap: cfg.MonthlyCapUSD, total: func() float64 { _, _, c := meter.Total(); return c }, now: time.Now}
+	}
+	if n, err := failInterrupted(ctx, pool, store.New(pool)); err != nil {
+		pool.Close()
+		return nil, nil, fmt.Errorf("uploads: %w", err)
+	} else if n > 0 {
+		cfg.Log.Warn("uploads left reading by a restart were marked interrupted", "count", n)
+	}
 	d := Wire(pool, student, checkerLLM, cfg.CheckerModel, systemClock{}, cfg.Log)
+	d.SecureCookie = !cfg.InsecureCookie
 	srv := &http.Server{
 		Handler:           NewHandler(d),
 		ReadHeaderTimeout: 5 * time.Second,
