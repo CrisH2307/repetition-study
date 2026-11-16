@@ -93,6 +93,9 @@ func fakeHandler() http.Handler { return newFake().h }
 // notServed lists spec operations Phase 0 does not serve (P0-INT skips digest and plan editing).
 var notServed = map[string]bool{
 	"GET /v1/plan": true, "PATCH /v1/plan/blocks/{id}": true, "PATCH /v1/cards/{id}": true, "GET /v1/digest/today": true,
+	// Contract v4: P2-API serves these and removes them from this list.
+	"GET /v1/me/export": true, "DELETE /v1/me": true, "POST /v1/consent": true, "GET /v1/feedback": true,
+	"POST /v1/feedback": true, "POST /v1/courses/{id}/import": true, "GET /v1/imports/{id}": true,
 }
 
 func loadSpec(t *testing.T) *openapi3.T {

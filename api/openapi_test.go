@@ -74,6 +74,37 @@ func TestDomainJSONMatchesSpec(t *testing.T) {
 	for k, v := range v3 {
 		cases[k] = v
 	}
+	// Contract v4.
+	ans := "very disappointed"
+	job := domain.ImportJob{ID: "im1", SubjectID: "sub1", Filename: "c.csv", Status: domain.ImportDone, RowsTotal: 2, RowsImported: 1,
+		RowErrors: []domain.ImportRowError{{Row: 3, Error: "That quote is not on a Ready page."}}, CreatedAt: now, FinishedAt: &now}
+	fb := domain.FeedbackAnswer{WeekStart: now, Question: "q", Answer: ans, CreatedAt: now}
+	consent := domain.Consent{TextVersion: "v1", AcceptedAt: now}
+	v4 := map[string]any{
+		"FeedbackAnswer":      fb,
+		"FeedbackPrompt":      domain.FeedbackPrompt{WeekStart: now, Question: "q", Answer: &ans},
+		"FeedbackPrompt open": domain.FeedbackPrompt{WeekStart: now, Question: "q"},
+		"Consent":             consent,
+		"ImportJob":           job,
+		"ImportJob running":   domain.ImportJob{ID: "im2", SubjectID: "sub1", Filename: "c.csv", Status: domain.ImportRunning, RowErrors: []domain.ImportRowError{}, CreatedAt: now},
+		"TeachTurn":           domain.TeachTurn{SessionID: "s1", TurnNo: 1, Transcript: "t", CreatedAt: now},
+		"TaughtClaim":         domain.TaughtClaim{ID: "t1", SessionID: "s1", ConceptID: "c1", StudentText: "x", TurnNo: 1},
+		"SelfGrade":           domain.SelfGrade{SessionID: "s1", ClaimID: "cl1", Rating: domain.RatingWrong},
+		"UserExport": domain.UserExport{ExportedAt: now, User: domain.User{ID: "u1", Name: "Dino", TimeZone: "America/Toronto"},
+			Consents: []domain.Consent{consent}, Feedback: []domain.FeedbackAnswer{fb},
+			Courses:  []domain.Subject{{ID: "sub1", Name: "Stats", Level: domain.LevelBeginner, Weight: 1}},
+			Concepts: []domain.Concept{{ID: "c1", SubjectID: "sub1", Name: "n", Claims: []domain.Claim{claim}}},
+			Uploads:  []domain.Upload{upload}, Pages: []domain.Page{{ID: "p1", UploadID: "up1", Number: 1, Status: domain.PageReady, UpdatedAt: now}},
+			Sessions: []domain.TeachSession{{ID: "s1", ConceptID: "c1"}}, Turns: []domain.TeachTurn{{SessionID: "s1", TurnNo: 1, CreatedAt: now}},
+			TaughtClaims: []domain.TaughtClaim{{ID: "t1", SessionID: "s1", ConceptID: "c1", TurnNo: 1}},
+			Reports:      []domain.Report{{SessionID: "s1", ConceptID: "c1", Results: []domain.ClaimResult{}, Schedule: &ev, Status: domain.ReportChecked}},
+			SelfGrades:   []domain.SelfGrade{{SessionID: "s1", ClaimID: "cl1", Rating: domain.RatingRight}},
+			Disputes:     []domain.Dispute{{ID: "d1", SessionID: "s1", UserID: "u1", Status: domain.DisputeOpen, CreatedAt: now}},
+			ReviewEvents: []domain.ReviewEvent{ev}, Imports: []domain.ImportJob{job}},
+	}
+	for k, v := range v4 {
+		cases[k] = v
+	}
 	for name, v := range cases {
 		schema, _, _ := strings.Cut(name, " ")
 		raw, err := json.Marshal(v)
