@@ -435,7 +435,7 @@ func TestReviewStore(t *testing.T) {
 		}
 	}
 	good, again := "good", "again"
-	now := time.Now().UTC()
+	now := time.Now().UTC().Truncate(time.Microsecond) // Postgres keeps microseconds; Linux clocks have nanoseconds
 	ins("card_review", k1.ID, &good, now.Add(-48*time.Hour))
 	ins("card_review", k1.ID, &again, now.Add(-24*time.Hour))
 	ins("teach_back", k1.ID, nil, now.Add(-time.Hour))
