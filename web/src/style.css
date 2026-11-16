@@ -60,3 +60,5 @@ table { border-collapse:collapse; width:100%; font-size:14px; }
 th, td { text-align:left; vertical-align:top; padding:8px; border-bottom:1px solid var(--line); }
 details > summary { min-height:44px; display:flex; align-items:center; gap:8px; cursor:pointer; }
 @media (max-width:700px) { .split, .pagecheck { grid-template-columns:1fr; } }
+.card > .topic:first-child { border-top:0; padding-top:0; }
+.label { white-space:nowrap; }

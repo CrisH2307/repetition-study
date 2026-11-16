@@ -10,7 +10,7 @@ async function teach(page: Page, base: string, topic: string) {
   await expect(page.locator('.question .katex, .question')).toContainText('The AI student asks:')
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled() // textarea cleared after the turn
   await page.getByRole('button', { name: 'I am done, check my explanation' }).click()
-  await page.getByLabel('Right').check()
+  await page.getByLabel('Right').first().check()
   await page.getByRole('button', { name: 'Show my results' }).click()
 }
 
