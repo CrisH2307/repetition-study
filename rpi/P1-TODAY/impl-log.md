@@ -1,0 +1,1 @@
+- today.go + today_test.go added. `go test ./internal/planner` green (incl. Toronto DST week).
