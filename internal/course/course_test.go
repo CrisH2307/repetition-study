@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -51,6 +52,15 @@ func pdf(pages ...[]string) []byte {
 	return []byte(out)
 }
 
+// needPoppler skips PDF tests on machines without poppler (CI installs it in a later change).
+func needPoppler(t *testing.T) {
+	for _, b := range []string{"pdftotext", "pdftoppm"} {
+		if _, err := exec.LookPath(b); err != nil {
+			t.Skip(b + " is not installed")
+		}
+	}
+}
+
 func setup(t *testing.T) (Notes, *fakes.CourseStore, domain.Subject, domain.Concept) {
 	st := &fakes.CourseStore{}
 	c, _ := st.CreateCourse(ctx, u, domain.Subject{Name: "Calc"})
@@ -72,6 +82,7 @@ func upload(t *testing.T, n Notes, st *fakes.CourseStore, c domain.Subject, file
 }
 
 func TestReadPDFPages(t *testing.T) {
+	needPoppler(t)
 	n, st, c, _ := setup(t)
 	up, ps := upload(t, n, st, c, pdf([]string{"First page text"}, []string{"Second page text"}), "")
 	if up.Status != domain.UploadNeedsChecking || up.Error != "" || len(ps) != 2 {
@@ -101,6 +112,7 @@ func TestReadBadPDFAndPasted(t *testing.T) {
 }
 
 func TestReadTooManyPages(t *testing.T) {
+	needPoppler(t)
 	n, st, c, _ := setup(t)
 	pages := make([][]string, MaxPages+1)
 	for i := range pages {
@@ -140,13 +152,13 @@ func TestReadyEditAndEmpty(t *testing.T) {
 
 func TestClaimQuotes(t *testing.T) {
 	n, st, c, k := setup(t)
-	_, ready := upload(t, n, st, c, pdf([]string{"A limit describes the value a function", "approaches near a point."}), "")
+	_, ready := upload(t, n, st, c, nil, "A limit describes the value a function\napproaches near a point.")
 	_, other := upload(t, n, st, c, nil, "A derivative is the slope of the tangent line.")
 	n.MarkReady(ctx, u, ready[0].ID)
 	bs, _ := st.ReadyBlocks(ctx, u, c.ID)
 	in := domain.ClaimInput{Text: "limit", Kind: domain.KindDefinition, Required: true,
 		Anchor: domain.Anchor{BlockID: bs[0].ID, Quote: "the value a function approaches near a point"}}
-	// quote spans the line break in the PDF
+	// quote spans the line break in the page text
 	cl, err := n.AddClaim(ctx, u, k.ID, in)
 	if err != nil {
 		t.Fatal(err)
