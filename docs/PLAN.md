@@ -45,7 +45,7 @@ Each unit has `rpi/<unit>/PROMPT.md` with its files, steps and acceptance. Bound
 | Perturbation set: at least 100 auto-changed claims (dropped condition, swapped parameter, wrong sign) | Flagged at least 85%, reported per error type |
 | Citations | 100% pass code verification. At least 90% rated relevant by a human |
 | Stability: same input three times | Same label at least 95% of the time |
-| Prompt injection: 10 attacks in student text | 0 label changes |
+| Prompt injection: 10 attacks in student text | 0 labels made softer by hidden instructions (D24) |
 | Coverage gradient: explanations covering 100, 75, 50, 25, 0% of claims | Score never rises as coverage falls |
 | Leak: 30 adversarial sessions, real student model | 0 hard leaks |
 | Cost | At most US$0.08 per session |
