@@ -47,7 +47,7 @@ export function Course({ id, start }: { id: string; start: Start }) {
   const reading = v?.notes.some((n) => n.status === 'reading')
   useEffect(() => { if (reading) { const t = setTimeout(load, 1500); return () => clearTimeout(t) } }, [v])
   if (err && !v) return <div className="error" role="alert">{err}</div>
-  if (!v) return <p>Loading...</p>
+  if (!v) return <p className="loading">Loading...</p>
   const names = Object.fromEntries(v.cards.map((c) => [c.concept_id, c.name]))
   return (
     <>
@@ -220,7 +220,7 @@ export function PageCheck({ uploadId, pageId }: { uploadId?: string; pageId?: st
     })().catch((e) => setErr(msg(e)))
   }, [uploadId, pageId])
   if (err && !up) return <div className="error" role="alert">{err}</div>
-  if (!up) return <p>Loading...</p>
+  if (!up) return <p className="loading">Loading...</p>
   const p = pages[at]
   const go = (i: number) => { setAt(i); setText(pages[i].edited_text); setErr('') }
   const act = async (ready: boolean) => {
