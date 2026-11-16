@@ -25,8 +25,8 @@ Hard design rules
 - review_events is append-only.
 - Do not claim learning gains anywhere in the product or demo.
 
-Stack: Go backend (net/http, pgx, SSE), Postgres, go-fsrs, Gemini for the
-student, Claude for the checker. Python only in scripts/parse_pdf.py, outside
+Stack: Go backend (net/http, pgx, SSE), Postgres, go-fsrs, GPT 6 Luna via
+OpenRouter for the student and the checker (D22). Python only in scripts/parse_pdf.py, outside
 the request path. React, Vite, TypeScript and KaTeX for the web UI. The "UI
 deferred" rule is lifted for the MVP (see DECISIONS D8).
 
