@@ -38,6 +38,7 @@ One log. Newest change at the top of each row. On 2026-11-09 Cris and Dino appro
 | D32 | Deployment shape: one Docker image (Go API serves the built web app and runs poppler) plus one Postgres, in a Canadian region (D17), daily backups and a tested restore. The host is Cris's choice; until then the image runs anywhere Docker runs. | Default (main agent, 2026-11-16) |
 | D33 | Model use in Phase 1: same GPT 6 Luna roles and the 3-vote check (D22, D23). A monthly app-wide spend cap from the environment; when it is reached checks report `unchecked` and no schedule changes. The cap value is Cris's. | Default (main agent, 2026-11-16) |
 | D34 | Product name stays a placeholder ("Space Repetition") on the pilot site, which is invite-only and not public, so D16 is not triggered. | Default (main agent, 2026-11-16) |
+| D35 | An invite link keeps working after first use and always signs in the same user (contract v3), so a student can add a second device without Cris. The link works like a password: send it privately. | Default (main agent, 2026-11-16) |
 
 ## Record of changes to earlier decisions
 
