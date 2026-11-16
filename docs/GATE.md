@@ -57,6 +57,8 @@ go run ./cmd/evalcheck --models "$CHECKER_MODEL" --student-model "$STUDENT_MODEL
 
 Other flags (defaults in brackets): `--suites` [all 8: human, perturb, citations, stability, injection, coverage, leak, cost], `--split` [test; also dev or all], `--turns` [8, turns in each full session of the cost row], `--unit` [content/private/unit.json], `--data` [eval/data], `--labels` [eval/data/labels_final.csv]. Do not tune prompts on the test split to pass (rule in `docs/PLAN.md`).
 
+In the human labels row, an explanation where the three checker votes have no majority is still scored, in the strictest way: every claim in it counts as a miss (a correct claim as marked contradicted, a wrong claim as not flagged, a missing claim as not caught), and the headline says how many were unchecked.
+
 A dry run with no cost, to check the tool itself: `--models fake --suites human --unit content/unit.json`. This was not re-run for this page.
 
 ## 4. Where the output lands

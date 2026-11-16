@@ -5,6 +5,7 @@ package checker
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"regexp"
@@ -146,6 +147,9 @@ var rank = map[domain.ClaimLabel]int{
 	domain.LabelSupported: 1, domain.LabelPartial: 2, domain.LabelAbsent: 3, domain.LabelContradicted: 4,
 }
 
+// ErrNoMajority means the runs gave a claim no label that more than half share.
+var ErrNoMajority = errors.New("no majority")
+
 // vote merges enforced runs. Results are grouped by claim id; results with no
 // claim id form one group of their own. A run's vote for a group is the worst
 // label it gave there, or "" if it gave none. The value more than half the runs
@@ -191,7 +195,7 @@ func vote(runs []Outcome) (Outcome, error) {
 			}
 		}
 		if win < 0 {
-			return Outcome{}, fmt.Errorf("checker: no majority for claim %q: %v", strings.TrimPrefix(k, "id:"), votes)
+			return Outcome{}, fmt.Errorf("checker: %w for claim %q: %v", ErrNoMajority, strings.TrimPrefix(k, "id:"), votes)
 		}
 		out.Results = append(out.Results, groups[win][k]...)
 	}
