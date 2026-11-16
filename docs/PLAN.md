@@ -78,6 +78,22 @@ Labels: one type label, `phase-1` and `wave-N`. Each unit has `rpi/<unit>/PROMPT
 
 Gate G1 (review section 5) is measured during the pilot, after Phase 1 ships.
 
+## Phase 2: pilot tooling (planned 2026-11-16, starts after Phase 1 ships)
+
+Goal: run the pilot with Dino and classmates and measure it honestly: usage and dispute numbers, a privacy export and delete, simple import, a smoother first visit, and disputes that grow the eval set. Gate G2 (review section 5) is judged at the end of the pilot. Defaults D36 to D40. Main agent plan: `rpi/P2-MAIN/plan.md`.
+
+Not built until Cris decides (issue in `rpi/P2-MAIN/plan.md`): the study arms (PL-STUDY, needs a supervisor's view on ethics review, D12), the daily email digest (needs an email service), and hard account deletion (touches the append-only rule).
+
+| Wave | Unit | Branch | Work | Needs |
+| --- | --- | --- | --- | --- |
+| 1 | P2-CONTRACT | `feature/contract-v4` | Feedback answers, imports, consent record, account deletion request; OpenAPI | Phase 1 in qa |
+| 2 | P2-METRICS | `feature/metrics-export` | Sessions per week, week-4 retention, dispute rate, cost per session; CSV export for Cris | P2-CONTRACT |
+| 2 | P2-PRIVACY | `feature/privacy-export` | "Download my data" as JSON; deletion request recorded and shown to Cris | P2-CONTRACT |
+| 2 | P2-IMPORT | `feature/csv-import` | Import concepts and claims from CSV, each claim still needs a verified quote | P2-CONTRACT |
+| 2 | P2-EVAL2 | `feature/eval-from-disputes` | Disputes Dino upholds become eval cases on the dev split; script to re-run the gate (Cris runs it, paid) | P2-CONTRACT |
+| 3 | P2-API | `feature/api-v4` | Handlers for the v4 endpoints, `cmd/export -deletions`, isolation test | wave 2 |
+| 3 | P2-WEB2 | `feature/web-pilot` | First-visit guide, empty states, feedback form, download and delete buttons | wave 2 |
+
 ## Cut order if time runs short
 
 Voice input, digest, timed blocks, extra screens. Never cut the citation fix, the outage state, or the gate.

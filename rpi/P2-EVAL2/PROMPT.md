@@ -1,0 +1,3 @@
+Unit P2-EVAL2, wave 2. Branch `feature/eval-from-disputes`. Model: Sonnet 5.5, medium. Labels: `User Story`, `phase-2`, `wave-2`.
+Files: `eval/`, `cmd/evalcheck/`, `scripts/disputes_to_eval.py`, `rpi/P2-EVAL2/`. Never `eval/data/` test split files.
+D39: a script turns disputes Dino marked upheld (from `cmd/export -disputes` CSV plus his column) into dev-split eval cases with no course text committed (ids and claim text only; source text stays in content/private/). `evalcheck` gains a flag to include them. Document in `docs/GATE.md`-style steps for Cris to re-run (paid, with --max-cost). No real model calls in tests.

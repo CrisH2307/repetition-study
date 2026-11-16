@@ -1,0 +1,5 @@
+Unit P2-CONTRACT, wave 1. Branch `feature/contract-v4`. Model: Opus 5.5, effort high. Labels: `User Story`, `phase-2`, `wave-1`.
+Files: `internal/domain/`, `api/`, `migrations/`, `internal/fakes/`, `internal/app/handlers_test.go` (skip list only), `rpi/P2-CONTRACT/`.
+Read first: `docs/PLAN.md` (Phase 2), D36 to D40, the v3 contract.
+Additive migration 0005: feedback answers (user, week, question, answer), consent record (user, text version, accepted_at), deletion requests (user, created_at, done_at), import jobs (course, filename, status, row errors). Domain types and interfaces for metrics (read-only views over existing rows), privacy export, CSV import, eval-case export; fakes. OpenAPI: GET /v1/me/export, POST /v1/me/delete-request, POST and GET /v1/feedback, POST /v1/courses/{id}/import, GET /v1/imports/{id}, POST /v1/consent. Never change review_events.
+Done when: build, vet, race tests green with Postgres; migration applies on a Phase 1 copy. List interfaces for wave 2 in impl-log.

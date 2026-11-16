@@ -38,6 +38,11 @@ One log. Newest change at the top of each row. On 2026-11-09 Cris and Dino appro
 | D32 | Deployment shape: one Docker image (Go API serves the built web app and runs poppler) plus one Postgres, in a Canadian region (D17), daily backups and a tested restore. The host is Cris's choice; until then the image runs anywhere Docker runs. | Default (main agent, 2026-11-16) |
 | D33 | Model use in Phase 1: same GPT 6 Luna roles and the 3-vote check (D22, D23). A monthly app-wide spend cap from the environment; when it is reached checks report `unchecked` and no schedule changes. The cap value is Cris's. | Default (main agent, 2026-11-16) |
 | D34 | Product name stays a placeholder ("Space Repetition") on the pilot site, which is invite-only and not public, so D16 is not triggered. | Default (main agent, 2026-11-16) |
+| D36 | Phase 2 scope and waves as in PLAN.md. Pilot metrics come from existing rows (sessions, review events, disputes, model meter); no tracking scripts, no third-party analytics. | Default (main agent, 2026-11-16) |
+| D37 | Privacy: "Download my data" gives one JSON file of everything the user wrote and every schedule change. A delete request is recorded and Cris acts on it by hand until he decides how deletion meets the append-only review log. | Default (main agent, 2026-11-16) |
+| D38 | Import: CSV only (concept, claim, kind, quote). Every imported claim goes through the same quote check as a typed one (D28). Anki import is not built (new dependency). | Default (main agent, 2026-11-16) |
+| D39 | Disputes that Dino upholds become eval cases on the development split only. The frozen test split never changes. Re-running the gate is paid and Cris runs it. | Default (main agent, 2026-11-16) |
+| D40 | Feedback form: one optional question per week, including "How would you feel if you could no longer use this?" (G2). Answers are stored with the user and never shown to others. | Default (main agent, 2026-11-16) |
 
 ## Record of changes to earlier decisions
 
