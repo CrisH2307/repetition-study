@@ -1,0 +1,11 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "cd web && npm ci",
+  "buildCommand": "cd web && npm run build",
+  "outputDirectory": "web/dist",
+  "rewrites": [
+    { "source": "/v1/:path*", "destination": "https://API_ORIGIN_PLACEHOLDER/v1/:path*" },
+    { "source": "/healthz", "destination": "https://API_ORIGIN_PLACEHOLDER/healthz" },
+    { "source": "/((?!v1/|healthz).*)", "destination": "/index.html" }
+  ]
+}
