@@ -960,3 +960,38 @@ func TestProgressLines(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+// Upheld disputes join the dev split only, labelled for their one claim (D39).
+func TestDisputesDevOnly(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "disputes.jsonl")
+	row := `{"id":"d-1","concept_id":"00000000-0000-0000-0000-000000000101","claim_id":"00000000-0000-0000-0000-000000020101","text":"x","expected":"contradicted"}` + "\n"
+	os.WriteFile(p, []byte(row), 0o644)
+	load := func(split string) *dataset {
+		d, err := loadData("../../content/unit.json", "../../eval/data", "", split)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return d
+	}
+	if err := addDisputes(load("test"), p); err == nil || !strings.Contains(err.Error(), "never test") {
+		t.Errorf("test split must refuse disputes, got %v", err)
+	}
+	d := load("dev")
+	before := len(d.Expl)
+	if err := addDisputes(d, p); err != nil {
+		t.Fatal(err)
+	}
+	k := labelKey{"d-1", "00000000-0000-0000-0000-000000020101"}
+	if len(d.Expl) != before+1 || d.Labels[k] != domain.LabelContradicted {
+		t.Errorf("case not added: %d expl, label %q", len(d.Expl), d.Labels[k])
+	}
+	os.WriteFile(p, []byte(strings.Replace(row, "contradicted", "wrong", 1)), 0o644)
+	if err := addDisputes(load("dev"), p); err == nil {
+		t.Error("a bad label must be refused")
+	}
+	os.WriteFile(p, []byte(strings.Replace(row, "000000020101", "000000099999", 1)), 0o644)
+	if err := addDisputes(load("dev"), p); err == nil {
+		t.Error("an unknown claim must be refused")
+	}
+}
