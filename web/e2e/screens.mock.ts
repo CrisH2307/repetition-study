@@ -4,14 +4,14 @@ import { expect, test } from '@playwright/test'
 test.describe.configure({ mode: 'serial' })
 
 test('invite link signs in and shows Today', async ({ page }) => {
-  await page.goto('/invite/demo')
+  await page.goto('/invite#demo')
   await expect(page).toHaveURL(/localhost:15175\/$/)
   await expect(page.getByRole('complementary', { name: 'Study Time' })).toContainText('1.2 / 3.0 h')
   await expect(page.getByRole('button', { name: 'Start Exponential races' })).toBeVisible()
 })
 
 test('upload, page Ready, add a key idea, teach, report, dispute', async ({ page }) => {
-  await page.goto('/invite/demo')
+  await page.goto('/invite#demo')
   await page.getByRole('link', { name: 'Courses' }).click()
   await page.getByRole('link', { name: 'Fixture course' }).click()
 
@@ -69,7 +69,7 @@ test('upload, page Ready, add a key idea, teach, report, dispute', async ({ page
 })
 
 test('checker down shows Not checked and no corrections', async ({ page }) => {
-  await page.goto('/invite/demo')
+  await page.goto('/invite#demo')
   await page.getByRole('button', { name: 'Start Practice: pretend the checker is down' }).click()
   await page.getByLabel('Your explanation').fill('Some words.')
   await page.getByRole('button', { name: 'Send', exact: true }).click()
@@ -82,7 +82,7 @@ test('checker down shows Not checked and no corrections', async ({ page }) => {
 })
 
 test('week shows the date range, schedule with today and notes', async ({ page }) => {
-  await page.goto('/invite/demo')
+  await page.goto('/invite#demo')
   await page.getByRole('link', { name: 'Week' }).click()
   await expect(page.getByRole('heading', { name: 'Schedule:' })).toBeVisible()
   await expect(page.getByText('(today)')).toBeVisible()
@@ -91,7 +91,7 @@ test('week shows the date range, schedule with today and notes', async ({ page }
 
 test('phone width has no sideways scroll', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 800 })
-  for (const path of ['/invite/demo', '/#/week', '/#/course/00000000-0000-0000-0000-0000000000s1']) {
+  for (const path of ['/invite#demo', '/#/week', '/#/course/00000000-0000-0000-0000-0000000000s1']) {
     await page.goto(path)
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375)
@@ -99,9 +99,9 @@ test('phone width has no sideways scroll', async ({ page }) => {
 })
 
 test('sign out, then a used link says it does not work', async ({ page }) => {
-  await page.goto('/invite/demo')
+  await page.goto('/invite#demo')
   await page.getByRole('button', { name: 'Sign out' }).click()
   await expect(page.getByText('You are signed out.')).toBeVisible()
-  await page.goto('/invite/used')
+  await page.goto('/invite#used')
   await expect(page.getByText('This link does not work.')).toBeVisible()
 })

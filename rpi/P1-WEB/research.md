@@ -1,6 +1,6 @@
 # P1-WEB research
 - Contract: api/openapi.yaml v0.3.0. Screens use /v1/me, /v1/auth/redeem, /v1/auth/sign-out, /v1/today, /v1/week, /v1/courses, /v1/courses/{id}/view, uploads, pages, blocks, concepts/{id}/claims, self-grades, disputes.
-- Invite link URL shape: not in the contract and P1-AUTH is not pushed yet. The web app reads `/invite/<token>` (unverified; P1-AUTH must print links in that shape).
+- Invite link URL shape: not in the contract and P1-AUTH is not pushed yet. The web app reads `/invite#<token>` (matches cmd/invite on qa) (unverified; P1-AUTH must print links in that shape).
 - Report reason line: Report has no reason field. The app shows `schedule.payload.reason` when it is a string, else a line computed from the labels (unverified which one P1-API sends).
 - Self-grade needs claim ids, so Self-grade lists the concept's claim checklist (GET /concepts/{id}/claims), shown after the attempt only. With no claims it falls back to the sent points and saves nothing.
 - Citation has no page id, so the report shows the page as text; the Mistakes table links to the page (Mistake.page_id).

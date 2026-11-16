@@ -33,7 +33,8 @@ export function App() {
     const nav = () => setPath(route())
     window.addEventListener(SIGNED_OUT, out)
     window.addEventListener('hashchange', nav)
-    const token = /^\/invite\/([^/]+)/.exec(location.pathname)?.[1]
+    // cmd/invite prints <site>/invite#<token>; the hash keeps the token out of server logs
+    const token = location.pathname === '/invite' ? location.hash.slice(1) : ''
     if (token) {
       redeem(token).then((u) => { history.replaceState(null, '', '/'); setUser(u) }, () => setUser('bad-link'))
     } else me().then(setUser, () => setUser((u) => (u === 'out' ? u : 'down'))) // a 401 already said 'out'
