@@ -7,3 +7,4 @@
 - `TestFullLoopV3`, `TestSpendCapGivesUncheckedReport`, `TestCapLLMResetsEachMonth`, `TestUploadRefusals`. Green.
 - `web/e2e/loop.e2e.ts`: 2 passed against the Go API. Mock config 6 passed.
 - `go test -race -p 1 ./...` green. Without `-p 1` the `migrations` test can fail when run alongside other packages on the shared dev database.
+- Start marks uploads left in reading as interrupted (plain message). TestInterruptedUploadsFailAtStart green.

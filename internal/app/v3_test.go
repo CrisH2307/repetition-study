@@ -388,3 +388,27 @@ func TestUploadRefusals(t *testing.T) {
 		t.Errorf("a PDF: got %d, want 202", got)
 	}
 }
+
+// A restart leaves uploads in reading. Starting the API gives them a plain error.
+func TestInterruptedUploadsFailAtStart(t *testing.T) {
+	e := newEnv(t, &fakes.LLM{Reply: "Why?"}, &fakes.LLM{JSONReply: `{"results":[]}`}, "")
+	s := e.newStudent("Ana")
+	var sub domain.Subject
+	s.call("POST", "/v1/courses", `{"name":"S","weekly_hours":1,"level":"beginner"}`, 201, &sub)
+	var id string
+	if err := e.pool.QueryRow(context.Background(), `INSERT INTO uploads (subject_id, filename, pasted_text) VALUES ($1, 'f', 'x') RETURNING id::text`, sub.ID).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	n, err := failInterrupted(context.Background(), e.pool, store.New(e.pool))
+	if err != nil || n != 1 {
+		t.Fatalf("marked %d, %v; want 1", n, err)
+	}
+	var u domain.Upload
+	s.call("GET", "/v1/uploads/"+id, "", 200, &u)
+	if u.Status != domain.UploadNeedsChecking || u.Error != "Reading was interrupted. Please upload the file again." {
+		t.Errorf("upload = %q %q", u.Status, u.Error)
+	}
+	if n, _ := failInterrupted(context.Background(), e.pool, store.New(e.pool)); n != 0 {
+		t.Errorf("second start marked %d, want 0", n)
+	}
+}

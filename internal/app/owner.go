@@ -131,3 +131,31 @@ func (c *capLLM) Stream(ctx context.Context, req domain.LLMRequest) (<-chan doma
 	}
 	return c.LLM.Stream(ctx, req)
 }
+
+// failInterrupted runs once at start. A restart kills the background reads, so
+// any upload still reading gets a plain error and the student is never stuck.
+func failInterrupted(ctx context.Context, db DB, course domain.CourseStore) (int, error) {
+	rows, err := db.Query(ctx, `SELECT s.user_id::text, u.id::text FROM uploads u JOIN subjects s ON s.id = u.subject_id WHERE u.status = 'reading'`)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	var pairs [][2]string
+	for rows.Next() {
+		var p [2]string
+		if err := rows.Scan(&p[0], &p[1]); err != nil {
+			return 0, err
+		}
+		pairs = append(pairs, p)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	for _, p := range pairs {
+		if err := course.SetUploadStatus(ctx, p[0], p[1], domain.UploadNeedsChecking, "Reading was interrupted. Please upload the file again."); err != nil {
+			return 0, err
+		}
+	}
+	return len(pairs), nil
+}

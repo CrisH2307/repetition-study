@@ -117,6 +117,12 @@ func Build(ctx context.Context, cfg Config) (*http.Server, func(), error) {
 	if cfg.MonthlyCapUSD > 0 {
 		checkerLLM = &capLLM{LLM: checkerLLM, cap: cfg.MonthlyCapUSD, total: func() float64 { _, _, c := meter.Total(); return c }, now: time.Now}
 	}
+	if n, err := failInterrupted(ctx, pool, store.New(pool)); err != nil {
+		pool.Close()
+		return nil, nil, fmt.Errorf("uploads: %w", err)
+	} else if n > 0 {
+		cfg.Log.Warn("uploads left reading by a restart were marked interrupted", "count", n)
+	}
 	d := Wire(pool, student, checkerLLM, cfg.CheckerModel, systemClock{}, cfg.Log)
 	d.SecureCookie = !cfg.InsecureCookie
 	srv := &http.Server{
