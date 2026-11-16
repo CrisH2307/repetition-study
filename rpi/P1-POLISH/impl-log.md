@@ -11,7 +11,7 @@ Changed (web/src/style.css, plus 3 headings and the loading class in the .tsx fi
 - Mistakes table scrolls inside its box on a phone instead of squeezing to one word per line.
 - Start button error shows on its own line. Loading text uses the muted colour.
 
-Not done: Inter is not loaded (no font file is bundled; the stack falls back to system-ui). Loading it needs a self-hosted font (new dependency) or Google Fonts (sends student IPs to Google). Ask Cris.
+Inter: Cris chose self-hosting. Added @fontsource-variable/inter 5.3.0 (exact), imported once in main.tsx, system-ui fallback kept. No Latin-only entry exists; index.css splits subsets by unicode-range, so browsers fetch only the Latin file (48 kB woff2). All subsets add 516 kB to dist, not downloaded unless needed.
 
 Tests: npm run build ok; vitest 9/9; Playwright mock 6/6; Playwright full API 2/2 (fresh DB polish_e2e, dropped after).
 Shots: rpi/P1-POLISH/shots, made by shots.ts (copy into web/ with a config pointing at it to rerun; SHOT=after).
