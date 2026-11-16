@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -18,11 +19,20 @@ import (
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	var capUSD float64
+	if v := os.Getenv("MONTHLY_CAP_USD"); v != "" {
+		var err error
+		if capUSD, err = strconv.ParseFloat(v, 64); err != nil || capUSD < 0 {
+			log.Fatalf("MONTHLY_CAP_USD must be a number of dollars, 0 or more: %q", v)
+		}
+	}
 	srv, closeDB, err := app.Build(ctx, app.Config{
-		DatabaseURL:  os.Getenv("DATABASE_URL"),
-		StudentModel: os.Getenv("STUDENT_MODEL"),
-		CheckerModel: os.Getenv("CHECKER_MODEL"),
-		Log:          slog.Default(),
+		InsecureCookie: os.Getenv("COOKIE_SECURE") == "false", // default true; false only for http://localhost
+		MonthlyCapUSD:  capUSD,
+		DatabaseURL:    os.Getenv("DATABASE_URL"),
+		StudentModel:   os.Getenv("STUDENT_MODEL"),
+		CheckerModel:   os.Getenv("CHECKER_MODEL"),
+		Log:            slog.Default(),
 	})
 	if err != nil {
 		log.Fatal(err)

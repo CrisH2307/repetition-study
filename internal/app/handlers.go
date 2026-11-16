@@ -1,6 +1,7 @@
 // Package app is the composition root: it wires the real implementations
-// together and serves api/openapi.yaml over net/http. Every request acts as the
-// seeded demo user (no auth in Phase 0).
+// together and serves api/openapi.yaml over net/http. With Deps.Auth set every
+// route but /healthz and /v1/auth/redeem needs a sign-in and acts as that user.
+// Without it (Phase 0 tests) every request acts as the seeded demo user.
 package app
 
 import (
@@ -16,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/CrisH2307/repetition-study/internal/auth"
 	"github.com/CrisH2307/repetition-study/internal/domain"
 )
 
@@ -29,17 +31,76 @@ type Deps struct {
 	Subjects SubjectStore
 	Clock    domain.Clock
 	Log      *slog.Logger
+
+	// Contract v3. Auth nil means Phase 0 mode: no sign-in, no v3 routes.
+	Auth         domain.Auth
+	SecureCookie bool // the session cookie needs HTTPS; false only for http://localhost
+	Course       domain.CourseStore
+	Reviews      domain.ReviewStore
+	Notes        domain.CourseNotes
+	Today        domain.TodayPlanner
+	Own          Owner
+	// PlannerFor returns the planner acting for one user. Optional, defaults to Planner.
+	PlannerFor func(userID string) domain.Planner
+}
+
+// Owner answers "is this Phase 0 id the user's?" with domain.ErrNotFound for no.
+type Owner interface {
+	Concept(ctx context.Context, userID, conceptID string) error
+	Card(ctx context.Context, userID, cardID string) error
+	// ConceptIDs is every concept of the user's live courses.
+	ConceptIDs(ctx context.Context, userID string) (map[string]bool, error)
 }
 
 // SubjectStore is the little persistence the subjects endpoints need.
 type SubjectStore interface {
-	List(ctx context.Context) ([]domain.Subject, error)
-	Create(ctx context.Context, s domain.Subject) (domain.Subject, error)
+	List(ctx context.Context, userID string) ([]domain.Subject, error)
+	Create(ctx context.Context, userID string, s domain.Subject) (domain.Subject, error)
 }
 
 type api struct {
 	Deps
 	reports domain.ReportReader
+}
+
+// uid is the user a request acts as.
+func (a *api) uid(r *http.Request) string {
+	if a.Auth == nil {
+		return domain.DemoUserID
+	}
+	u, _ := auth.UserFrom(r.Context())
+	return u.ID
+}
+
+// ctx carries the user to code that has no user argument (the teach store).
+func (a *api) ctx(r *http.Request) context.Context {
+	return context.WithValue(r.Context(), userKey{}, a.uid(r))
+}
+
+type userKey struct{}
+
+// ownsSession answers 404 for another user's teach session. Phase 0 mode skips it.
+func (a *api) ownsSession(w http.ResponseWriter, r *http.Request) bool {
+	if a.Auth == nil {
+		return true
+	}
+	if err := a.Reviews.SessionOwner(r.Context(), a.uid(r), r.PathValue("id")); err != nil {
+		a.fail(w, r, err)
+		return false
+	}
+	return true
+}
+
+// owns runs one Owner check. Phase 0 mode skips it.
+func (a *api) owns(w http.ResponseWriter, r *http.Request, check func(ctx context.Context, userID, id string) error) bool {
+	if a.Auth == nil {
+		return true
+	}
+	if err := check(r.Context(), a.uid(r), r.PathValue("id")); err != nil {
+		a.fail(w, r, err)
+		return false
+	}
+	return true
 }
 
 const maxBody = 1 << 20 // 1 MiB: turns are text and LaTeX only
@@ -57,7 +118,7 @@ func NewHandler(d Deps) http.Handler {
 	}
 	a.reports = rr
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { writeJSON(w, 200, map[string]string{"status": "ok"}) })
+	health := func(w http.ResponseWriter, _ *http.Request) { writeJSON(w, 200, map[string]string{"status": "ok"}) }
 	mux.HandleFunc("GET /v1/subjects", a.listSubjects)
 	mux.HandleFunc("POST /v1/subjects", a.createSubject)
 	mux.HandleFunc("POST /v1/plan/generate", a.generatePlan)
@@ -69,7 +130,18 @@ func NewHandler(d Deps) http.Handler {
 	mux.HandleFunc("GET /v1/reviews/due", a.due)
 	mux.HandleFunc("POST /v1/cards/{id}/review", a.reviewCard)
 	mux.HandleFunc("POST /v1/concepts/{id}/override", a.override)
-	return mux
+	if d.Auth == nil {
+		mux.HandleFunc("GET /healthz", health)
+		return mux
+	}
+	a.routesV3(mux)
+	ah := auth.HTTP{Auth: d.Auth, Secure: d.SecureCookie}
+	top := http.NewServeMux()
+	top.HandleFunc("GET /healthz", health)
+	top.HandleFunc("POST /v1/auth/redeem", ah.Redeem)
+	mux.HandleFunc("POST /v1/auth/sign-out", ah.SignOut)
+	top.Handle("/", ah.Require(mux))
+	return auth.Protect(top)
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -82,6 +154,7 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 // caller did not cause is a 500 whose detail stays in the log.
 func (a *api) fail(w http.ResponseWriter, r *http.Request, err error) {
 	code, msg := 500, "internal error"
+	var ue *domain.UserError
 	switch {
 	case errors.Is(err, context.Canceled):
 		// The caller hung up (Finish returns ctx.Err()). Nobody is listening, so log quietly.
@@ -94,6 +167,8 @@ func (a *api) fail(w http.ResponseWriter, r *http.Request, err error) {
 		code, msg = 504, "timed out"
 	case isNotFound(err):
 		code, msg = 404, "not found"
+	case errors.As(err, &ue):
+		code, msg = 400, ue.Msg
 	case strings.Contains(err.Error(), "already finished"):
 		code, msg = 409, "session already finished"
 	}
@@ -110,7 +185,7 @@ func bad(w http.ResponseWriter, msg string) { writeJSON(w, 400, map[string]strin
 // has no sentinel error, so its "unknown session" text is matched too.
 // ponytail: string match until internal/teach exports an error value.
 func isNotFound(err error) bool {
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, pgx.ErrNoRows) || errors.Is(err, domain.ErrNotFound) {
 		return true
 	}
 	var pe *pgconn.PgError
@@ -153,7 +228,7 @@ func toSubjectOut(s domain.Subject) subjectOut {
 }
 
 func (a *api) listSubjects(w http.ResponseWriter, r *http.Request) {
-	subs, err := a.Subjects.List(r.Context())
+	subs, err := a.Subjects.List(r.Context(), a.uid(r))
 	if err != nil {
 		a.fail(w, r, err)
 		return
@@ -165,7 +240,8 @@ func (a *api) listSubjects(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, out)
 }
 
-func (a *api) createSubject(w http.ResponseWriter, r *http.Request) {
+// readSubject decodes and checks the body of POST /v1/subjects, POST /v1/courses and PATCH /v1/courses/{id}.
+func readSubject(w http.ResponseWriter, r *http.Request) (domain.Subject, bool) {
 	var in struct {
 		Name        string   `json:"name"`
 		WeeklyHours *float64 `json:"weekly_hours"`
@@ -174,22 +250,22 @@ func (a *api) createSubject(w http.ResponseWriter, r *http.Request) {
 		Weight      *float64 `json:"weight"`
 	}
 	if !decode(w, r, &in) {
-		return
+		return domain.Subject{}, false
 	}
 	s := domain.Subject{Name: strings.TrimSpace(in.Name), Level: domain.Level(in.Level), Weight: 1}
 	switch {
 	case s.Name == "":
 		bad(w, "name is required")
-		return
+		return s, false
 	case in.WeeklyHours == nil || *in.WeeklyHours < 0:
 		bad(w, "weekly_hours must be 0 or more")
-		return
+		return s, false
 	case s.Level != domain.LevelBeginner && s.Level != domain.LevelIntermediate && s.Level != domain.LevelAdvanced:
 		bad(w, "level must be beginner, intermediate or advanced")
-		return
+		return s, false
 	case in.Weight != nil && *in.Weight < 0:
 		bad(w, "weight must be 0 or more")
-		return
+		return s, false
 	}
 	s.WeeklyHours = *in.WeeklyHours
 	if in.Weight != nil {
@@ -199,11 +275,19 @@ func (a *api) createSubject(w http.ResponseWriter, r *http.Request) {
 		d, err := parseDate(*in.ExamDate)
 		if err != nil {
 			bad(w, "exam_date must be YYYY-MM-DD")
-			return
+			return s, false
 		}
 		s.ExamDate = &d
 	}
-	got, err := a.Subjects.Create(r.Context(), s)
+	return s, true
+}
+
+func (a *api) createSubject(w http.ResponseWriter, r *http.Request) {
+	s, ok := readSubject(w, r)
+	if !ok {
+		return
+	}
+	got, err := a.Subjects.Create(r.Context(), a.uid(r), s)
 	if err != nil {
 		a.fail(w, r, err)
 		return
@@ -212,6 +296,13 @@ func (a *api) createSubject(w http.ResponseWriter, r *http.Request) {
 }
 
 // ---- plan ----
+
+func (a *api) plannerFor(r *http.Request) domain.Planner {
+	if a.PlannerFor != nil {
+		return a.PlannerFor(a.uid(r))
+	}
+	return a.Planner
+}
 
 func (a *api) generatePlan(w http.ResponseWriter, r *http.Request) {
 	var in struct {
@@ -225,7 +316,7 @@ func (a *api) generatePlan(w http.ResponseWriter, r *http.Request) {
 		bad(w, "week_start must be YYYY-MM-DD")
 		return
 	}
-	p, err := a.Planner.Generate(r.Context(), domain.DemoUserID, ws)
+	p, err := a.plannerFor(r).Generate(r.Context(), a.uid(r), ws)
 	if err != nil {
 		a.fail(w, r, err)
 		return
@@ -242,7 +333,7 @@ func (a *api) furtherPlanning(w http.ResponseWriter, r *http.Request) {
 		bad(w, "week must be YYYY-MM-DD")
 		return
 	}
-	fp, err := a.Planner.FurtherPlanning(r.Context(), ws)
+	fp, err := a.plannerFor(r).FurtherPlanning(r.Context(), ws)
 	if err != nil {
 		a.fail(w, r, err)
 		return
@@ -271,7 +362,13 @@ func (a *api) startSession(w http.ResponseWriter, r *http.Request) {
 		bad(w, "concept_id is required")
 		return
 	}
-	ts, err := a.Teach.Start(r.Context(), in.ConceptID)
+	if a.Auth != nil {
+		if err := a.Own.Concept(r.Context(), a.uid(r), in.ConceptID); err != nil {
+			a.fail(w, r, err)
+			return
+		}
+	}
+	ts, err := a.Teach.Start(a.ctx(r), in.ConceptID)
 	if err != nil {
 		a.fail(w, r, err)
 		return
@@ -282,6 +379,9 @@ func (a *api) startSession(w http.ResponseWriter, r *http.Request) {
 // turn streams the AI student's question as server-sent events: token, then
 // done, or error. Transcript and latex go to the engine as plain data.
 func (a *api) turn(w http.ResponseWriter, r *http.Request) {
+	if !a.ownsSession(w, r) {
+		return
+	}
 	var in struct {
 		Transcript string `json:"transcript"`
 		LaTeX      string `json:"latex"`
@@ -324,6 +424,9 @@ func (a *api) turn(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *api) finish(w http.ResponseWriter, r *http.Request) {
+	if !a.ownsSession(w, r) {
+		return
+	}
 	rep, err := a.Teach.Finish(r.Context(), r.PathValue("id"))
 	if err != nil {
 		a.fail(w, r, err)
@@ -333,6 +436,9 @@ func (a *api) finish(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *api) report(w http.ResponseWriter, r *http.Request) {
+	if !a.ownsSession(w, r) {
+		return
+	}
 	rep, err := a.reports.GetReport(r.Context(), r.PathValue("id"))
 	if err != nil {
 		a.fail(w, r, err)
@@ -361,6 +467,20 @@ func (a *api) due(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
+	if a.Auth != nil { // the scheduler is not user-aware: keep only this user's concepts
+		mine, err := a.Own.ConceptIDs(r.Context(), a.uid(r))
+		if err != nil {
+			a.fail(w, r, err)
+			return
+		}
+		kept := items[:0:0]
+		for _, it := range items {
+			if mine[it.ConceptID] {
+				kept = append(kept, it)
+			}
+		}
+		items = kept
+	}
 	if items == nil {
 		items = []domain.DueItem{}
 	}
@@ -368,6 +488,9 @@ func (a *api) due(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *api) reviewCard(w http.ResponseWriter, r *http.Request) {
+	if a.Auth != nil && !a.owns(w, r, a.Own.Card) {
+		return
+	}
 	var in struct {
 		Grade domain.Grade `json:"grade"`
 	}
@@ -389,6 +512,9 @@ func (a *api) reviewCard(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *api) override(w http.ResponseWriter, r *http.Request) {
+	if a.Auth != nil && !a.owns(w, r, a.Own.Concept) {
+		return
+	}
 	var in struct {
 		DueAt  time.Time `json:"due_at"`
 		Reason string    `json:"reason"`
@@ -407,3 +533,5 @@ func (a *api) override(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, ev)
 }
+
+func authUser(r *http.Request) (domain.User, bool) { return auth.UserFrom(r.Context()) }
