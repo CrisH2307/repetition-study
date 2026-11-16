@@ -21,6 +21,15 @@ Review per PR: boundary vs `.claude/boundaries.json`, CI green, diff read; `/cod
 ## Status
 | Unit | Issue | PR | State |
 | --- | --- | --- | --- |
-| P1-CONTRACT | #87 | | starting |
-| P1-E2E | #88 | | starting |
-| P1-IMAGE | #89 | | starting |
+| P1-CONTRACT | #87 | #93 | merged |
+| P1-E2E | #88 | #91 | merged |
+| P1-IMAGE | #89 | #94 (replaced #92, GitGuardian) | merged |
+| P1-TODAY | #98 | #101 | merged |
+| P1-AUTH | #97 | #102 | merged |
+| P1-COURSE | #96 | #103 | merged |
+| P1-STORE | #95 | #104 | merged |
+| P1-WEB | #99 | #105 | merged (started early, needs only the contract) |
+| P1-API | #100 | | proposed, waits for Cris to start it |
+| P1-DEPLOY | | | waits for #85 |
+
+Rules from Cris (2026-11-16): no attribution footer or Co-Authored-By; every unit turns on PR auto-fix after opening its PR.

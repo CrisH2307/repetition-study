@@ -56,7 +56,7 @@ If G0 fails: one iteration on a separate development split (narrower claims, dif
 
 ## Phase 1: MVP for Dino and classmates (started 2026-11-16)
 
-Goal: five or more students upload their own notes for a quantitative course, check the transcription, list the key claims, teach back, and follow a Today queue on a deployed site, without Cris touching the database. Gate G0 is met on GPT 6 Luna (run 2), so checked reports may change schedules. Decisions D26 to D34. Main agent plan: `rpi/P1-MAIN/plan.md`.
+Goal: five or more students upload their own notes for a quantitative course, check the transcription, list the key claims, teach back, and follow a Today queue on a deployed site, without Cris touching the database. Gate G0 is met on GPT 6 Luna (run 2), so checked reports may change schedules. Decisions D26 to D35. Main agent plan: `rpi/P1-MAIN/plan.md`.
 
 Not in Phase 1: billing, voice, digest, timed calendar blocks, claim-level schedules (D4 stays approved, it comes after the pilot starts), model-made transcription or claim proposals (paid, needs Cris).
 
