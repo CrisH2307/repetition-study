@@ -58,8 +58,9 @@ type orUsage struct {
 
 type orChunk struct {
 	Choices []struct {
-		Delta   struct{ Content string } `json:"delta"`
-		Message struct{ Content string } `json:"message"`
+		Delta        struct{ Content string } `json:"delta"`
+		Message      struct{ Content string } `json:"message"`
+		FinishReason string                   `json:"finish_reason"`
 	} `json:"choices"`
 	Usage *orUsage `json:"usage"`
 	Error *struct {
@@ -112,7 +113,7 @@ func (o *OpenRouter) post(ctx context.Context, body map[string]any) (*http.Respo
 }
 
 // JSON asks for schema-bound JSON (response_format json_schema) built from
-// out's type. A decode failure is not retried.
+// out's type. A reply that does not parse is retried.
 func (o *OpenRouter) JSON(ctx context.Context, req domain.LLMRequest, out any) error {
 	if err := o.Meter.check(); err != nil {
 		return err
@@ -155,7 +156,7 @@ func (o *OpenRouter) JSON(ctx context.Context, req domain.LLMRequest, out any) e
 			return errNoRetry{errors.New("llm: openrouter reply has no choices")}
 		}
 		if err := json.Unmarshal([]byte(c.Choices[0].Message.Content), out); err != nil {
-			return errNoRetry{fmt.Errorf("llm: reply is not the expected JSON: %w", err)}
+			return fmt.Errorf("%w (finish_reason=%s): %w", errBadJSON, c.Choices[0].FinishReason, err)
 		}
 		return nil
 	})

@@ -95,7 +95,7 @@ func (a *Anthropic) JSON(ctx context.Context, req domain.LLMRequest, out any) er
 			}
 		}
 		if err := json.Unmarshal([]byte(sb.String()), out); err != nil {
-			return errNoRetry{fmt.Errorf("llm: reply is not the expected JSON: %w", err)}
+			return fmt.Errorf("%w: %w", errBadJSON, err)
 		}
 		return nil
 	})

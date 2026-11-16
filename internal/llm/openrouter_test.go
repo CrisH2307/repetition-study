@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/CrisH2307/repetition-study/internal/domain"
 )
@@ -219,5 +220,50 @@ func TestOpenRouterRepeatableSettings(t *testing.T) {
 	collect(t, ch)
 	if strings.Contains(body, `"temperature"`) || strings.Contains(body, `"seed"`) {
 		t.Errorf("stream request must keep model defaults: %s", body)
+	}
+}
+
+func TestOpenRouterJSONRetriesTruncatedReply(t *testing.T) {
+	n := 0
+	srv := orServer(t, new(string), func(w http.ResponseWriter) {
+		n++
+		if n == 1 {
+			fmt.Fprint(w, `{"choices":[{"message":{"content":"{\"ok\": tr"},"finish_reason":"length"}],"usage":{"prompt_tokens":4,"completion_tokens":2}}`)
+			return
+		}
+		fmt.Fprint(w, `{"choices":[{"message":{"content":"{\"ok\": true}"},"finish_reason":"stop"}],"usage":{"prompt_tokens":4,"completion_tokens":2}}`)
+	})
+	defer srv.Close()
+	o := NewOpenRouter("k", orModel, srv.URL)
+	o.Meter = &Meter{}
+	o.Retry = Retry{Backoff: time.Millisecond}
+	var out struct {
+		OK bool `json:"ok"`
+	}
+	if err := o.JSON(context.Background(), orReq, &out); err != nil || !out.OK {
+		t.Fatalf("err=%v out=%+v", err, out)
+	}
+	if n != 2 || len(o.Meter.Calls()) != 2 {
+		t.Errorf("attempts=%d metered=%d, want 2 and 2", n, len(o.Meter.Calls()))
+	}
+}
+
+func TestOpenRouterJSONGivesUpOnTruncatedReplies(t *testing.T) {
+	n := 0
+	srv := orServer(t, new(string), func(w http.ResponseWriter) {
+		n++
+		fmt.Fprint(w, `{"choices":[{"message":{"content":"{\"ok\": tr"},"finish_reason":"length"}],"usage":{"prompt_tokens":4,"completion_tokens":2}}`)
+	})
+	defer srv.Close()
+	o := NewOpenRouter("k", orModel, srv.URL)
+	o.Meter = &Meter{}
+	o.Retry = Retry{Backoff: time.Millisecond}
+	var out struct{ OK bool }
+	err := o.JSON(context.Background(), orReq, &out)
+	if err == nil || !strings.Contains(err.Error(), "finish_reason=length") || !strings.Contains(err.Error(), "not the expected JSON") {
+		t.Fatalf("err=%v", err)
+	}
+	if n != 3 || len(o.Meter.Calls()) != 3 {
+		t.Errorf("attempts=%d metered=%d, want 3 and 3", n, len(o.Meter.Calls()))
 	}
 }
