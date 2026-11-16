@@ -38,11 +38,16 @@ One log. Newest change at the top of each row. On 2026-11-09 Cris and Dino appro
 | D32 | Deployment shape: one Docker image (Go API serves the built web app and runs poppler) plus one Postgres, in a Canadian region (D17), daily backups and a tested restore. The host is Cris's choice; until then the image runs anywhere Docker runs. | Default (main agent, 2026-11-16) |
 | D33 | Model use in Phase 1: same GPT 6 Luna roles and the 3-vote check (D22, D23). A monthly app-wide spend cap from the environment; when it is reached checks report `unchecked` and no schedule changes. The cap value is Cris's. | Default (main agent, 2026-11-16) |
 | D34 | Product name stays a placeholder ("Space Repetition") on the pilot site, which is invite-only and not public, so D16 is not triggered. | Default (main agent, 2026-11-16) |
+| D35 | An invite link keeps working after first use and always signs in the same user (contract v3), so a student can add a second device without Cris. The link works like a password: send it privately. | Default (main agent, 2026-11-16) |
 | D36 | Phase 2 scope and waves as in PLAN.md. Pilot metrics come from existing rows (sessions, review events, disputes, model meter); no tracking scripts, no third-party analytics. | Default (main agent, 2026-11-16) |
-| D37 | Privacy: "Download my data" gives one JSON file of everything the user wrote and every schedule change. A delete request is recorded and Cris acts on it by hand until he decides how deletion meets the append-only review log. | Default (main agent, 2026-11-16) |
+| D37 | Privacy: "Download my data" gives one JSON file of everything the user wrote and every schedule change. Deleting an account follows D43. | Default (main agent, 2026-11-16) |
 | D38 | Import: CSV only (concept, claim, kind, quote). Every imported claim goes through the same quote check as a typed one (D28). Anki import is not built (new dependency). | Default (main agent, 2026-11-16) |
 | D39 | Disputes that Dino upholds become eval cases on the development split only. The frozen test split never changes. Re-running the gate is paid and Cris runs it. | Default (main agent, 2026-11-16) |
 | D40 | Feedback form: one optional question per week, including "How would you feel if you could no longer use this?" (G2). Answers are stored with the user and never shown to others. | Default (main agent, 2026-11-16) |
+| D41 | No study arms and no ethics review for now: the pilot is plain student use (Cris on #107). PL-STUDY is not built. No research claims and no learning-gain claims. | Approved (Cris, 2026-11-16) |
+| D42 | No daily email digest in Phase 2 (Cris on #107). No email service. | Approved (Cris, 2026-11-16) |
+| D43 | Deleting an account removes everything of that user, including their review history (Cris on #107, option a). This is the one exception to the append-only review log: only a single delete-account code path may remove review_events rows, and only all rows of one user at once; the trigger still rejects every other update or delete. | Approved (Cris, 2026-11-16) |
+| D44 | Consent and privacy texts are written in plain words and shown to pilot users without a separate legal review (Cris on #107: "people can have access"). Read as: no named reviewer; Cris corrects this row if he meant something else. | Approved (Cris, 2026-11-16), wording unverified |
 
 ## Record of changes to earlier decisions
 

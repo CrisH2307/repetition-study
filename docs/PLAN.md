@@ -56,7 +56,7 @@ If G0 fails: one iteration on a separate development split (narrower claims, dif
 
 ## Phase 1: MVP for Dino and classmates (started 2026-11-16)
 
-Goal: five or more students upload their own notes for a quantitative course, check the transcription, list the key claims, teach back, and follow a Today queue on a deployed site, without Cris touching the database. Gate G0 is met on GPT 6 Luna (run 2), so checked reports may change schedules. Decisions D26 to D34. Main agent plan: `rpi/P1-MAIN/plan.md`.
+Goal: five or more students upload their own notes for a quantitative course, check the transcription, list the key claims, teach back, and follow a Today queue on a deployed site, without Cris touching the database. Gate G0 is met on GPT 6 Luna (run 2), so checked reports may change schedules. Decisions D26 to D35. Main agent plan: `rpi/P1-MAIN/plan.md`.
 
 Not in Phase 1: billing, voice, digest, timed calendar blocks, claim-level schedules (D4 stays approved, it comes after the pilot starts), model-made transcription or claim proposals (paid, needs Cris).
 
@@ -80,15 +80,15 @@ Gate G1 (review section 5) is measured during the pilot, after Phase 1 ships.
 
 ## Phase 2: pilot tooling (planned 2026-11-16, starts after Phase 1 ships)
 
-Goal: run the pilot with Dino and classmates and measure it honestly: usage and dispute numbers, a privacy export and delete, simple import, a smoother first visit, and disputes that grow the eval set. Gate G2 (review section 5) is judged at the end of the pilot. Defaults D36 to D40. Main agent plan: `rpi/P2-MAIN/plan.md`.
+Goal: run the pilot with Dino and classmates and measure it honestly: usage and dispute numbers, a privacy export and delete, simple import, a smoother first visit, and disputes that grow the eval set. Gate G2 (review section 5) is judged at the end of the pilot. Decisions D36 to D44. Main agent plan: `rpi/P2-MAIN/plan.md`.
 
-Not built until Cris decides (issue in `rpi/P2-MAIN/plan.md`): the study arms (PL-STUDY, needs a supervisor's view on ethics review, D12), the daily email digest (needs an email service), and hard account deletion (touches the append-only rule).
+Not built (Cris on #107): study arms (D41) and the email digest (D42). Account deletion is real and removes the user's review history too (D43).
 
 | Wave | Unit | Branch | Work | Needs |
 | --- | --- | --- | --- | --- |
-| 1 | P2-CONTRACT | `feature/contract-v4` | Feedback answers, imports, consent record, account deletion request; OpenAPI | Phase 1 in qa |
+| 1 | P2-CONTRACT | `feature/contract-v4` | Feedback answers, imports, consent record, account deletion (D43: one guarded path may delete one user's review_events); OpenAPI | Phase 1 in qa |
 | 2 | P2-METRICS | `feature/metrics-export` | Sessions per week, week-4 retention, dispute rate, cost per session; CSV export for Cris | P2-CONTRACT |
-| 2 | P2-PRIVACY | `feature/privacy-export` | "Download my data" as JSON; deletion request recorded and shown to Cris | P2-CONTRACT |
+| 2 | P2-PRIVACY | `feature/privacy-export` | "Download my data" as JSON; "Delete my account" removes everything of that user (D43) | P2-CONTRACT |
 | 2 | P2-IMPORT | `feature/csv-import` | Import concepts and claims from CSV, each claim still needs a verified quote | P2-CONTRACT |
 | 2 | P2-EVAL2 | `feature/eval-from-disputes` | Disputes Dino upholds become eval cases on the dev split; script to re-run the gate (Cris runs it, paid) | P2-CONTRACT |
 | 3 | P2-API | `feature/api-v4` | Handlers for the v4 endpoints, `cmd/export -deletions`, isolation test | wave 2 |
