@@ -14,5 +14,21 @@ services:
       interval: 2s
       timeout: 3s
       retries: 15
+  app:
+    profiles: ["prod"]
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-repetition}:${POSTGRES_PASSWORD:-repetition}@db:5432/${POSTGRES_DB:-repetition}?sslmode=disable
+      STUDENT_MODEL: ${STUDENT_MODEL:-}
+      CHECKER_MODEL: ${CHECKER_MODEL:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+    command: ["sh", "-c", "migrate && exec api"]
+    ports:
+      - "${PORT:-8080}:8080"
 volumes:
   pgdata:
