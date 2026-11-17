@@ -141,6 +141,7 @@ func (s *Store) CourseView(ctx context.Context, userID, subjectID string) (domai
 	at := make(map[string]int, len(v.Cards))
 	for i, c := range v.Cards {
 		at[c.ConceptID] = i
+		v.Cards[i].Claims = []domain.Claim{}
 	}
 	for _, cl := range claims {
 		v.Cards[at[cl.ConceptID]].Claims = append(v.Cards[at[cl.ConceptID]].Claims, cl)
