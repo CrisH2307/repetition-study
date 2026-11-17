@@ -82,6 +82,8 @@ func TestAuthStore(t *testing.T) {
 	// Idle expiry, sign out everywhere, revoke (P3-HARDEN).
 	mustOK(t, s.CreateSession(bg, u1.ID, []byte("s2"), now.AddDate(0, 3, 0)))
 	mustOK(t, s.CreateSession(bg, u1.ID, []byte("s3"), now.AddDate(0, 3, 0)))
+	_, err = s.SessionUser(bg, []byte("s2"), now) // first use stamps last_seen_at
+	mustOK(t, err)
 	_, err = s.SessionUser(bg, []byte("s2"), now.Add(domain.SessionIdleTTL+time.Hour))
 	isNF(t, "idle session", err)
 	_, err = s.SessionUser(bg, []byte("s3"), now)

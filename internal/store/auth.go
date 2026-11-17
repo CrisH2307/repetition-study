@@ -52,14 +52,14 @@ func (s *Store) CreateSession(ctx context.Context, userID string, tokenHash []by
 
 func (s *Store) SessionUser(ctx context.Context, tokenHash []byte, now time.Time) (domain.User, error) {
 	var u domain.User
-	var seen time.Time
+	var seen *time.Time
 	err := s.pool.QueryRow(ctx, `SELECT u.id::text, u.name, u.time_zone, a.last_seen_at FROM auth_sessions a JOIN users u ON u.id = a.user_id
-		WHERE a.token_hash = $1 AND a.expires_at > $2 AND a.last_seen_at > $3`,
+		WHERE a.token_hash = $1 AND a.expires_at > $2 AND (a.last_seen_at IS NULL OR a.last_seen_at > $3)`,
 		tokenHash, now, now.Add(-domain.SessionIdleTTL)).Scan(&u.ID, &u.Name, &u.TimeZone, &seen)
 	if err != nil {
 		return u, nf(err)
 	}
-	if now.Sub(seen) > time.Hour { // keep writes rare
+	if seen == nil || now.Sub(*seen) > time.Hour { // keep writes rare
 		_, err = s.pool.Exec(ctx, `UPDATE auth_sessions SET last_seen_at = $2 WHERE token_hash = $1`, tokenHash, now)
 	}
 	return u, err
