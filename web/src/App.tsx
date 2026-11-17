@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { SIGNED_OUT, Today, TodayItem, User, WeekPlan, getToday, getWeek, me, redeem, signOut, startSession } from './api'
 import { Session, TeachFlow } from './Teach'
 import { Course, Courses, PageCheck } from './Course'
+import { Shared } from './Share'
 import { CONSENT_VERSION, Consent, FeedbackCard, Guide, Settings, flag } from './Pilot'
 
 const dayWord = { weekday: 'short', month: 'short', day: 'numeric' } as const
@@ -79,6 +80,7 @@ export function App() {
         {page === 'week' ? <Week />
           : page === 'courses' ? <Courses />
           : page === 'course' ? <Course id={id} start={start} />
+          : page === 'shared' ? <Shared key={id} token={id} />
           : page === 'upload' ? <PageCheck uploadId={id} />
           : page === 'page' ? <PageCheck pageId={id} />
           : page === 'settings' ? <Settings onDeleted={() => { location.hash = ''; setUser('deleted') }} />

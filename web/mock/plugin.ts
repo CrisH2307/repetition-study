@@ -29,6 +29,11 @@ const uploads: Rec[] = []
 const pages: Rec[] = []
 const blocks: Rec[] = []
 const imports: Rec[] = []
+const shares: Rec[] = []
+const pack = (instructor: boolean) => ({ course_name: 'Shared course', owner_name: instructor ? 'Prof. Rivera' : 'Sam', instructor, sources: instructor ? ['Week 1 notes.pdf'] : [],
+  concepts: [{ name: 'Exponential races', claims: [
+    { text: 'X finishes first with chance $a/(a+b)$.', kind: 'statement', required: true },
+    { text: 'The minimum has rate $a+b$.', kind: 'statement', required: true }] }] })
 const consents: Rec[] = []
 let feedback: Rec | null = null
 const QUESTION = 'How would you feel if you could no longer use this?'
@@ -124,6 +129,20 @@ export function mockApi(): Plugin {
           if (m === 'POST') { feedback = { week_start, question: QUESTION, answer: b().answer, created_at: iso(0) }; return json(201, feedback) }
           return json(200, { week_start: feedback?.week_start ?? week_start, question: QUESTION, answer: feedback?.answer ?? null })
         }
+        if (seg[0] === 'shared') {
+          if (seg[1] === 'gone') return say(404, 'This link does not work.')
+          if (seg[2] === 'import' && m === 'POST') {
+            return json(200, { subject_id: b().subject_id, concepts_added: 1, claims_added: 1, uploads_copied: 0,
+              needs_quote: [{ concept_id: C1, claim: pack(false).concepts[0].claims[1] }] })
+          }
+          const live = ['demo', 'instructor'].includes(seg[1]) || shares.some((x) => x.token === seg[1] && !x.revoked_at)
+          return live ? json(200, pack(seg[1] === 'instructor')) : say(404, 'This link does not work.')
+        }
+        if (seg[0] === 'shares' && m === 'DELETE') {
+          const x = shares.find((y) => y.id === seg[1])
+          if (!x) return say(404, 'We could not find that link.')
+          x.revoked_at = iso(0); return json(204)
+        }
         if (seg[0] === 'imports') {
           const j = imports.find((x) => x.id === seg[1])
           return j ? json(200, j) : say(404, 'We could not find that import.')
@@ -176,6 +195,10 @@ export function mockApi(): Plugin {
           if (seg[2] === 'concepts' && m === 'POST') {
             const k = { id: newId('concept'), subject_id: c.id, name: b().name }
             concepts.push(k); return json(201, { ...k, claims: [] })
+          }
+          if (seg[2] === 'share' && m === 'POST') {
+            const x = { id: newId('share'), subject_id: c.id, includes_sources: false, created_at: iso(0), revoked_at: null, token: `tok${n}` }
+            shares.push(x); return json(201, x)
           }
           if (seg[2] === 'blocks') return json(200, blocks.filter((x) => x.subject_id === c.id))
           if (seg[2] === 'uploads' && m === 'POST') {

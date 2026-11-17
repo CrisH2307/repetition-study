@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from 'react'
 import { Math } from './Math'
 import { WORDS } from './Teach'
 import { Start, StartButton } from './App'
+import { ShareBox } from './Share'
 import {
   ClaimKind, CourseView, ImportJob, Page, SourceBlock, StudyCard, Subject, Upload,
   addClaim, addConcept, addCourse, courseView, getImport, getPage, importCsv, getUpload, listBlocks, listCourses, listPages, markReady, savePage, uploadNotes,
@@ -74,6 +75,7 @@ export function Course({ id, start }: { id: string; start: Start }) {
         {v.cards.map((c) => <Card key={c.concept_id} c={c} course={id} start={start} onChange={load} />)}
         <AddTopic course={id} onDone={load} />
         <ImportForm course={id} onDone={load} />
+        <ShareBox course={id} />
       </section>
       <section>
         <h2>Mistakes</h2>
