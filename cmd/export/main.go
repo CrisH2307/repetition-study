@@ -7,7 +7,7 @@
 //
 //	DATABASE_URL=... EXPORT_SALT=... go run ./cmd/export -metrics [-weeks 12] > metrics.csv
 //
-// -metrics writes the pilot numbers (D36) with user ids hashed using EXPORT_SALT.
+// -metrics writes the pilot numbers (D36), plus model cost per checked session by month, with user ids hashed using EXPORT_SALT.
 package main
 
 import (
@@ -71,6 +71,11 @@ func writeMetrics(ctx context.Context, src any, weeks int, now time.Time, salt s
 	r, err := metrics.Compute(ctx, ms, to.AddDate(0, 0, -7*weeks), to, now)
 	if err != nil {
 		return err
+	}
+	if l, ok := src.(domain.SpendLedger); ok {
+		if err := metrics.AddCost(ctx, &r, l); err != nil {
+			return err
+		}
 	}
 	if ec, ok := src.(domain.EvalCaseStore); ok {
 		up, err := ec.UpheldDisputes(ctx)

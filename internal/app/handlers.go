@@ -42,6 +42,12 @@ type Deps struct {
 	Own          Owner
 	// PlannerFor returns the planner acting for one user. Optional, defaults to Planner.
 	PlannerFor func(userID string) domain.Planner
+
+	// Contract v4. Needed whenever Auth is set.
+	Feedback domain.FeedbackStore
+	Privacy  domain.PrivacyStore
+	Imports  domain.ImportStore
+	Importer domain.Importer
 }
 
 // Owner answers "is this Phase 0 id the user's?" with domain.ErrNotFound for no.
@@ -135,6 +141,7 @@ func NewHandler(d Deps) http.Handler {
 		return mux
 	}
 	a.routesV3(mux)
+	a.routesV4(mux)
 	ah := auth.HTTP{Auth: d.Auth, Secure: d.SecureCookie}
 	top := http.NewServeMux()
 	top.HandleFunc("GET /healthz", health)

@@ -45,3 +45,25 @@ func TestWriteMetrics(t *testing.T) {
 		t.Fatal("want errors for no salt and unsupported store")
 	}
 }
+
+// metricsAndSpend is what the Postgres store is: metrics and a ledger in one.
+type metricsAndSpend struct {
+	*fakes.MetricsStore
+	*fakes.SpendLedger
+}
+
+func TestWriteMetricsCostPerCheckedSession(t *testing.T) {
+	now := time.Date(2026, 11, 16, 0, 0, 0, 0, time.UTC)
+	src := metricsAndSpend{
+		&fakes.MetricsStore{Weeks: []domain.WeekCounts{{WeekStart: time.Date(2026, 11, 9, 0, 0, 0, 0, time.UTC), Sessions: 4, CheckedSessions: 4}}},
+		&fakes.SpendLedger{},
+	}
+	src.SpendLedger.Add(context.Background(), now, 2)
+	var b bytes.Buffer
+	if err := writeMetrics(context.Background(), src, 2, now, "s", &b); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(b.String(), "2026-11,2.0000,4,0.5000") {
+		t.Fatal(b.String())
+	}
+}
