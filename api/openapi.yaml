@@ -269,8 +269,7 @@ paths:
         "404": {$ref: "#/components/responses/Error"}
   /v1/shared/{token}:
     get:
-      summary: What a share link holds (D50). No sign-in.
-      security: []
+      summary: What a share link holds (D50). Needs sign-in.
       parameters: [{$ref: "#/components/parameters/Token"}]
       responses:
         "200": {description: Pack, content: {application/json: {schema: {$ref: "#/components/schemas/PackPreview"}}}}
