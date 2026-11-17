@@ -24,6 +24,8 @@ type User struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
 	TimeZone string `json:"time_zone"` // IANA name
+	// IsInstructor is set by cmd/instructor only (D51, contract v5).
+	IsInstructor bool `json:"is_instructor"`
 }
 
 type Invite struct {
