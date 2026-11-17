@@ -1,0 +1,4 @@
+- @axe-core/playwright 4.14.0 installed exact (npm view). Playwright 1.65.1.
+- axe (wcag2a/aa, 2.1) on all screens found 0 serious/critical already.
+- KaTeX had output 'html' only, so screen readers read broken glyph text. 'htmlAndMathml' gives MathML and aria-hides the visual part.
+- No dialogs exist in the app, so there is no focus-return case. Reduced motion and 320px already fine.

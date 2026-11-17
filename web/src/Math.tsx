@@ -10,7 +10,7 @@ export function renderMath(text: string): string {
       if (i % 2 === 0) return esc(p).replace(/\n/g, '<br>')
       const display = p.startsWith('$$')
       const tex = p.slice(display ? 2 : 1, display ? -2 : -1)
-      return katex.renderToString(tex, { displayMode: display, throwOnError: false, output: 'html', trust: false })
+      return katex.renderToString(tex, { displayMode: display, throwOnError: false, output: 'htmlAndMathml', trust: false })
     })
     .join('')
 }
