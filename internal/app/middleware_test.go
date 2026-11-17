@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -93,5 +94,37 @@ func TestUploadGuard(t *testing.T) {
 	}
 	if g.reserve("other", 10) != "" {
 		t.Error("another user is not affected")
+	}
+}
+
+func TestSignInKeyedPerStudentBehindEdge(t *testing.T) {
+	t.Setenv("RATE_SIGNIN_PER_MIN", "10")
+	t.Setenv("RATE_SIGNIN_EDGE_PER_MIN", "30")
+	h := Harden(http.HandlerFunc(ok), true)
+	code := func(edge, student string) int {
+		r := httptest.NewRequest("POST", "/v1/auth/redeem", nil)
+		r.Header.Set("Fly-Client-IP", edge)
+		r.Header.Set("X-Vercel-Forwarded-For", student)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, r)
+		return rec.Code
+	}
+	for i := 0; i < 20; i++ {
+		if c := code("9.9.9.9", fmt.Sprintf("10.0.0.%d", i)); c != 200 {
+			t.Fatalf("student %d: %d", i, c)
+		}
+	}
+	for i := 0; i < 10; i++ {
+		code("8.8.8.8", "10.1.1.1")
+	}
+	if c := code("8.8.8.8", "10.1.1.1"); c != 429 {
+		t.Errorf("11th sign-in by one student = %d, want 429", c)
+	}
+	// A direct caller rotating the forwarded header is stopped by the edge cap.
+	for i := 0; i < 30; i++ {
+		code("7.7.7.7", fmt.Sprintf("10.2.0.%d", i))
+	}
+	if c := code("7.7.7.7", "10.2.9.9"); c != 429 {
+		t.Errorf("rotating headers = %d, want 429", c)
 	}
 }
