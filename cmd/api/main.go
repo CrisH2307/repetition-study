@@ -43,6 +43,7 @@ func main() {
 		port = "8080"
 	}
 	srv.Addr = ":" + port
+	srv.Handler = app.Harden(srv.Handler, os.Getenv("COOKIE_SECURE") != "false")
 	if dir := os.Getenv("WEB_DIR"); dir != "" {
 		srv.Handler = withWeb(srv.Handler, dir)
 	}
