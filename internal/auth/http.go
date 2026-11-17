@@ -87,7 +87,11 @@ func (a HTTP) Redeem(w http.ResponseWriter, r *http.Request) {
 // SignOut serves POST /v1/auth/sign-out (behind Require).
 func (a HTTP) SignOut(w http.ResponseWriter, r *http.Request) {
 	if c, err := r.Cookie(CookieName); err == nil {
-		if err := a.Auth.SignOut(r.Context(), c.Value); err != nil {
+		out := a.Auth.SignOut
+		if r.URL.Query().Get("all") == "true" { // sign out everywhere
+			out = a.Auth.SignOutEverywhere
+		}
+		if err := out(r.Context(), c.Value); err != nil {
 			writeErr(w, http.StatusInternalServerError, "Could not sign you out. Please try again.")
 			return
 		}

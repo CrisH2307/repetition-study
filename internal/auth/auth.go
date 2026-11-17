@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"time"
 
 	"github.com/CrisH2307/repetition-study/internal/domain"
@@ -75,6 +76,27 @@ func (s *Service) UserFor(ctx context.Context, session string) (domain.User, err
 		return domain.User{}, domain.ErrNotFound
 	}
 	return s.Store.SessionUser(ctx, hash(session), s.now())
+}
+
+// SignOutEverywhere deletes every session of the session's user. An unknown
+// session has nothing to delete.
+func (s *Service) SignOutEverywhere(ctx context.Context, session string) error {
+	u, err := s.UserFor(ctx, session)
+	if errors.Is(err, domain.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return s.Store.DeleteUserSessions(ctx, u.ID)
+}
+
+// RevokeInvite ends an invite and the sessions of its user.
+func (s *Service) RevokeInvite(ctx context.Context, invite string) error {
+	if invite == "" {
+		return domain.ErrNotFound
+	}
+	return s.Store.RevokeInvite(ctx, hash(invite))
 }
 
 func (s *Service) SignOut(ctx context.Context, session string) error {

@@ -35,25 +35,25 @@ func (i *ids) next(kind string) string {
 	return fmt.Sprintf("%s-%d", kind, i.n[kind])
 }
 
+type fakeSession struct {
+	user          string
+	expires, seen time.Time
+}
+
 // AuthStore keeps invites and sessions keyed by the hex of the hash.
 type AuthStore struct {
 	mu       sync.Mutex
 	ids      ids
 	invites  map[string]*domain.Invite
-	sessions map[string]struct {
-		user    string
-		expires time.Time
-	}
-	Users map[string]domain.User
+	sessions map[string]fakeSession
+	Users    map[string]domain.User
+	revoked  map[string]bool
 }
 
 func (a *AuthStore) init() {
 	if a.invites == nil {
 		a.invites, a.Users = map[string]*domain.Invite{}, map[string]domain.User{}
-		a.sessions = map[string]struct {
-			user    string
-			expires time.Time
-		}{}
+		a.sessions = map[string]fakeSession{}
 	}
 }
 
@@ -71,7 +71,7 @@ func (a *AuthStore) RedeemInvite(_ context.Context, h []byte, now time.Time) (do
 	defer a.mu.Unlock()
 	a.init()
 	inv, ok := a.invites[hex.EncodeToString(h)]
-	if !ok {
+	if !ok || a.revoked[hex.EncodeToString(h)] {
 		return domain.User{}, domain.ErrNotFound
 	}
 	if inv.UserID == nil {
@@ -86,10 +86,7 @@ func (a *AuthStore) CreateSession(_ context.Context, userID string, h []byte, ex
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.init()
-	a.sessions[hex.EncodeToString(h)] = struct {
-		user    string
-		expires time.Time
-	}{userID, exp}
+	a.sessions[hex.EncodeToString(h)] = fakeSession{user: userID, expires: exp}
 	return nil
 }
 
@@ -98,10 +95,48 @@ func (a *AuthStore) SessionUser(_ context.Context, h []byte, now time.Time) (dom
 	defer a.mu.Unlock()
 	a.init()
 	s, ok := a.sessions[hex.EncodeToString(h)]
-	if !ok || !now.Before(s.expires) {
+	if !ok || !now.Before(s.expires) || !s.seen.IsZero() && now.Sub(s.seen) > domain.SessionIdleTTL {
 		return domain.User{}, domain.ErrNotFound
 	}
+	if s.seen.IsZero() || now.Sub(s.seen) > time.Hour {
+		s.seen = now
+		a.sessions[hex.EncodeToString(h)] = s
+	}
 	return a.Users[s.user], nil
+}
+
+func (a *AuthStore) DeleteUserSessions(_ context.Context, userID string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.init()
+	for k, s := range a.sessions {
+		if s.user == userID {
+			delete(a.sessions, k)
+		}
+	}
+	return nil
+}
+
+func (a *AuthStore) RevokeInvite(_ context.Context, h []byte) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.init()
+	inv, ok := a.invites[hex.EncodeToString(h)]
+	if !ok {
+		return domain.ErrNotFound
+	}
+	if a.revoked == nil {
+		a.revoked = map[string]bool{}
+	}
+	a.revoked[hex.EncodeToString(h)] = true
+	if inv.UserID != nil {
+		for k, s := range a.sessions {
+			if s.user == *inv.UserID {
+				delete(a.sessions, k)
+			}
+		}
+	}
+	return nil
 }
 
 func (a *AuthStore) DeleteSession(_ context.Context, h []byte) error {
@@ -161,6 +196,18 @@ func (a *Auth) UserFor(ctx context.Context, session string) (domain.User, error)
 
 func (a *Auth) SignOut(ctx context.Context, session string) error {
 	return a.store().DeleteSession(ctx, []byte(session))
+}
+
+func (a *Auth) SignOutEverywhere(ctx context.Context, session string) error {
+	u, err := a.UserFor(ctx, session)
+	if err != nil {
+		return nil
+	}
+	return a.store().DeleteUserSessions(ctx, u.ID)
+}
+
+func (a *Auth) RevokeInvite(ctx context.Context, invite string) error {
+	return a.store().RevokeInvite(ctx, []byte(invite))
 }
 
 // CourseStore keeps courses and everything under them in memory.
