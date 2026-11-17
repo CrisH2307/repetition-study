@@ -17,7 +17,7 @@ Checked against the code on branch `chore/load-security` on 2026-11-16. Each lin
 | 11 | Poppler load | pass | Fixed in P3-HARDEN. A global queue allows `POPPLER_CONCURRENT` (2) reads at once; the rest wait with status reading. No per-process memory limit. Covered by the semaphore in `readUpload`; unverified under real load |
 | 12 | Container user | pass | Image runs as non-root `USER app`. |
 | 13 | Server timeouts | pass | Header 5 s, read 15 s, write 30 s, idle 2 min (`internal/app/wire.go`). |
-| 14 | Rate limits | pass | Fixed in P3-HARDEN. Token buckets in memory: sign-in per address (`RATE_SIGNIN_PER_MIN` 10), writes per session (`RATE_WRITES_PER_MIN` 120), teach turns per session (`RATE_TURNS_PER_MIN` 30); 429 with plain words. Tests `TestRateLimitSignInAndTurns`, `TestLimiterRefills` |
+| 14 | Rate limits | pass | Fixed in P3-HARDEN. Token buckets in memory: sign-in per student address forwarded by Vercel (`RATE_SIGNIN_PER_MIN` 10) plus a larger cap per Fly address (`RATE_SIGNIN_EDGE_PER_MIN` 120), writes per session (`RATE_WRITES_PER_MIN` 120), teach turns per session (`RATE_TURNS_PER_MIN` 30); 429 with plain words. Tests `TestRateLimitSignInAndTurns`, `TestSignInKeyedPerStudentBehindEdge`, `TestLimiterRefills` |
 | 15 | Webhook signature | n/a | Moot: billing is deferred, no webhook exists. Re-check if P3-BILLING is ever built |
 | 16 | Browser security headers | pass | Fixed in P3-HARDEN. Every API reply sets `X-Content-Type-Options: nosniff`, a strict CSP, `Cache-Control: no-store`, `Referrer-Policy`, and HSTS when the cookie is Secure. Test `TestHardenHeaders` |
 | 17 | Student text as data | pass | Rule in `CLAUDE.md`; covered by the injection tests (D24). Not re-tested here. |

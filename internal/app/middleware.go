@@ -78,11 +78,24 @@ func clientIP(r *http.Request) string {
 	return h
 }
 
+// studentIP is the student's own address when the request came through the
+// Vercel rewrite (X-Vercel-Forwarded-For, first entry), else "". Vercel docs say
+// it matches X-Forwarded-For; whether Vercel overwrites a client-sent value on
+// a rewrite to an external origin is unverified, so a direct caller can fake it
+// and the per-edge cap in Harden is what stops that.
+func studentIP(r *http.Request) string {
+	v, _, _ := strings.Cut(r.Header.Get("X-Vercel-Forwarded-For"), ",")
+	return strings.TrimSpace(v)
+}
+
 // Harden wraps the API with security headers (gap 16) and rate limits (gap
-// 14). Limits per minute come from RATE_SIGNIN_PER_MIN (10, per address),
+// 14). Limits per minute come from RATE_SIGNIN_PER_MIN (10, per student address from Vercel, else per
+// Fly address), RATE_SIGNIN_EDGE_PER_MIN (120, per Fly address; a class behind
+// one Vercel edge fits, a header-rotating direct caller does not),
 // RATE_WRITES_PER_MIN (120) and RATE_TURNS_PER_MIN (30), both per session.
 func Harden(next http.Handler, secure bool) http.Handler {
 	signin := newLimiter(envInt("RATE_SIGNIN_PER_MIN", 10))
+	edge := newLimiter(envInt("RATE_SIGNIN_EDGE_PER_MIN", 120))
 	writes := newLimiter(envInt("RATE_WRITES_PER_MIN", 120))
 	turns := newLimiter(envInt("RATE_TURNS_PER_MIN", 30))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -97,7 +110,11 @@ func Harden(next http.Handler, secure bool) http.Handler {
 		ok := true
 		switch {
 		case r.URL.Path == "/v1/auth/redeem":
-			ok = signin.allow(clientIP(r))
+			key := studentIP(r)
+			if key == "" {
+				key = clientIP(r)
+			}
+			ok = edge.allow(clientIP(r)) && signin.allow(key)
 		case r.Method != http.MethodGet && r.Method != http.MethodHead && strings.HasPrefix(r.URL.Path, "/v1/"):
 			key := clientIP(r)
 			if c, err := r.Cookie("session"); err == nil {
