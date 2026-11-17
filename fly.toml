@@ -1,5 +1,6 @@
-# Fly.io config for the API image (Dockerfile). App name is a default; change it if taken.
-app = "space-repetition-api"
+# Fly.io config for the API image (Dockerfile). Small and cheap on purpose: the machine
+# sleeps when idle and wakes on the first request (first load can be slow).
+app = "repetition-study"
 primary_region = "yyz"
 
 [build]
@@ -11,14 +12,14 @@ primary_region = "yyz"
 [env]
   PORT = "8080"
   COOKIE_SECURE = "true"
-  # APP_URL, DATABASE_URL, OPENROUTER_API_KEY etc. are set with `fly secrets set` (never in git).
+  # DATABASE_URL, APP_URL, OPENROUTER_API_KEY etc. are set with `fly secrets set` (never in git).
 
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = "off"
+  auto_stop_machines = "stop"
   auto_start_machines = true
-  min_machines_running = 1   # always on: live streams and background PDF reading. Cost unverified.
+  min_machines_running = 0   # sleeps when idle. Set to 1 later if live streams or PDF reading get cut off.
 
   [[http_service.checks]]
     path = "/healthz"
@@ -26,3 +27,8 @@ primary_region = "yyz"
     interval = "15s"
     timeout = "5s"
     grace_period = "10s"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory = "512mb"   # smallest size that should hold the API plus poppler for PDFs (unverified)
