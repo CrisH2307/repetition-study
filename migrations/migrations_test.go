@@ -193,3 +193,139 @@ func TestContractV3Checks(t *testing.T) {
 		sp.Rollback(ctx)
 	}
 }
+
+// Needs a migrated database. D43: one transaction that sets app.delete_user may
+// delete that user's review_events, and nothing else.
+func TestReviewEventsDeleteAccountGuard(t *testing.T) {
+	url := os.Getenv("DATABASE_URL")
+	if url == "" {
+		t.Skip("DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close(ctx)
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx) // leaves no rows
+
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	// One user with one event each. Returns the user id and the event id.
+	seed := func(name string) (user, event string) {
+		must(tx.QueryRow(ctx, `INSERT INTO users (name) VALUES ($1) RETURNING id`, name).Scan(&user))
+		must(tx.QueryRow(ctx, `WITH s AS (INSERT INTO subjects (user_id, name, weekly_hours, level) VALUES ($1, 's', 1, 'beginner') RETURNING id),
+			c AS (INSERT INTO concepts (subject_id, name) SELECT id, 'c' FROM s RETURNING id)
+			INSERT INTO review_events (event_type, concept_id, grade, due_before, due_after, stability_before, stability_after)
+			SELECT 'teach_back', id, 'again', now(), now(), 0, 0 FROM c RETURNING id`, user).Scan(&event))
+		return user, event
+	}
+	alice, aliceEvent := seed("alice")
+	_, bobEvent := seed("bob")
+
+	rejected := func(name, sql string, args ...any) {
+		t.Helper()
+		sp, err := tx.Begin(ctx)
+		must(err)
+		if _, err := sp.Exec(ctx, sql, args...); err == nil {
+			t.Errorf("%s succeeded", name)
+		}
+		sp.Rollback(ctx)
+	}
+	rejected("delete without the setting", `DELETE FROM review_events WHERE id = $1`, aliceEvent)
+
+	_, err = tx.Exec(ctx, `SELECT set_config('app.delete_user', $1, true)`, alice) // same as SET LOCAL
+	must(err)
+	rejected("delete of another user's event", `DELETE FROM review_events WHERE id = $1`, bobEvent)
+	rejected("update of the user's own event", `UPDATE review_events SET grade = 'good' WHERE id = $1`, aliceEvent)
+	rejected("truncate", `TRUNCATE review_events`)
+
+	tag, err := tx.Exec(ctx, `DELETE FROM review_events WHERE id = $1`, aliceEvent)
+	must(err)
+	if tag.RowsAffected() != 1 {
+		t.Fatalf("deleted %d rows, want 1", tag.RowsAffected())
+	}
+	var n int
+	must(tx.QueryRow(ctx, `SELECT count(*) FROM review_events WHERE id = $1`, bobEvent).Scan(&n))
+	if n != 1 {
+		t.Fatal("bob's event is gone")
+	}
+}
+
+// Needs a migrated database. The v4 checks reject half-filled rows.
+func TestContractV4Checks(t *testing.T) {
+	url := os.Getenv("DATABASE_URL")
+	if url == "" {
+		t.Skip("DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close(ctx)
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx) // leaves no rows
+
+	var userID, subjectID, sessionID string
+	if err := tx.QueryRow(ctx, `INSERT INTO users (name) VALUES ('v4') RETURNING id`).Scan(&userID); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.QueryRow(ctx, `INSERT INTO subjects (user_id, name, weekly_hours, level) VALUES ($1, 's', 1, 'beginner') RETURNING id`, userID).Scan(&subjectID); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.QueryRow(ctx, `WITH c AS (INSERT INTO concepts (subject_id, name) VALUES ($1, 'c') RETURNING id)
+		INSERT INTO teach_sessions (concept_id) SELECT id FROM c RETURNING id`, subjectID).Scan(&sessionID); err != nil {
+		t.Fatal(err)
+	}
+	u, s, ss := "'"+userID+"'", "'"+subjectID+"'", "'"+sessionID+"'"
+	ok := map[string]string{
+		"feedback":        `INSERT INTO feedback_answers (user_id, week_start, question, answer) VALUES (` + u + `, '2026-11-16', 'q', 'a')`,
+		"consent":         `INSERT INTO consents (user_id, text_version) VALUES (` + u + `, 'v1')`,
+		"running import":  `INSERT INTO import_jobs (subject_id, filename) VALUES (` + s + `, 'f.csv')`,
+		"finished import": `INSERT INTO import_jobs (subject_id, filename, status, rows_total, rows_imported, row_errors, finished_at) VALUES (` + s + `, 'f.csv', 'done', 2, 1, '[{"row":3,"error":"x"}]', now())`,
+		"spend":           `INSERT INTO model_spend (month, usd) VALUES ('2026-11-01', 1.25)`,
+		"upheld":          `INSERT INTO disputes (session_id, user_id, status, outcome, expected_label) VALUES (` + ss + `, ` + u + `, 'reviewed', 'upheld', 'partial')`,
+		"rejected":        `INSERT INTO disputes (session_id, user_id, status, outcome) VALUES (` + ss + `, ` + u + `, 'reviewed', 'rejected')`,
+		"open dispute":    `INSERT INTO disputes (session_id, user_id) VALUES (` + ss + `, ` + u + `)`,
+	}
+	bad := map[string]string{
+		"second feedback same week": `INSERT INTO feedback_answers (user_id, week_start, question, answer) VALUES (` + u + `, '2026-11-16', 'q', 'b')`,
+		"empty consent version":     `INSERT INTO consents (user_id, text_version) VALUES (` + u + `, '')`,
+		"done import not finished":  `INSERT INTO import_jobs (subject_id, filename, status) VALUES (` + s + `, 'f.csv', 'done')`,
+		"more imported than total":  `INSERT INTO import_jobs (subject_id, filename, rows_total, rows_imported) VALUES (` + s + `, 'f.csv', 1, 2)`,
+		"row errors not a list":     `INSERT INTO import_jobs (subject_id, filename, row_errors) VALUES (` + s + `, 'f.csv', '{}')`,
+		"spend mid month":           `INSERT INTO model_spend (month, usd) VALUES ('2026-11-02', 1)`,
+		"negative spend":            `INSERT INTO model_spend (month, usd) VALUES ('2026-10-01', -1)`,
+		"upheld without label":      `INSERT INTO disputes (session_id, user_id, status, outcome) VALUES (` + ss + `, ` + u + `, 'reviewed', 'upheld')`,
+		"rejected with label":       `INSERT INTO disputes (session_id, user_id, status, outcome, expected_label) VALUES (` + ss + `, ` + u + `, 'reviewed', 'rejected', 'partial')`,
+		"outcome while open":        `INSERT INTO disputes (session_id, user_id, outcome) VALUES (` + ss + `, ` + u + `, 'rejected')`,
+	}
+	// ok runs first so the duplicate feedback row has something to collide with.
+	for name, q := range ok {
+		if _, err := tx.Exec(ctx, q); err != nil {
+			t.Errorf("%s rejected: %v", name, err)
+		}
+	}
+	for name, q := range bad {
+		sp, err := tx.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := sp.Exec(ctx, q); err == nil {
+			t.Errorf("%s accepted", name)
+		}
+		sp.Rollback(ctx)
+	}
+}

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -78,42 +79,93 @@ func (u userTeach) LoadConcept(ctx context.Context, id string) (domain.Concept, 
 	return c, srcs, nil
 }
 
-// capLLM refuses calls once the app has spent cap dollars in the calendar
-// month (UTC), so checks report unchecked and no date moves (D33).
-// ponytail: the spend is counted in memory, so a restart starts the month at zero.
-// Persist it (a table) if the cap must survive restarts.
-type capLLM struct {
-	domain.LLM
-	cap   float64
-	total func() float64 // all spend so far, ever
-	now   func() time.Time
+// spendRec copies model spend from the in-memory meter into the ledger, so
+// the monthly cap survives restarts (D33).
+type spendRec struct {
+	ledger domain.SpendLedger
+	total  func() float64 // all metered spend since this process started
+	now    func() time.Time
 
-	mu    sync.Mutex
-	month time.Month
-	year  int
-	base  float64 // total at the start of this month
+	mu   sync.Mutex
+	last float64 // part of total already in the ledger
 }
 
-func (c *capLLM) spent() float64 {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	t, now := c.total(), c.now().UTC()
-	if now.Year() != c.year || now.Month() != c.month {
-		c.year, c.month, c.base = now.Year(), now.Month(), t
+// flush adds spend not yet in the ledger. On a ledger error it keeps the amount for the next flush.
+func (s *spendRec) flush(ctx context.Context) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t := s.total()
+	if t <= s.last {
+		return
 	}
-	return t - c.base
+	if _, err := s.ledger.Add(context.WithoutCancel(ctx), s.now().UTC(), t-s.last); err == nil {
+		s.last = t
+	}
+}
+
+// metered records spend after each call of the wrapped model (a stream counts when it ends).
+type metered struct {
+	domain.LLM
+	rec *spendRec
+}
+
+func (m metered) JSON(ctx context.Context, req domain.LLMRequest, out any) error {
+	defer m.rec.flush(ctx)
+	return m.LLM.JSON(ctx, req, out)
+}
+
+func (m metered) Stream(ctx context.Context, req domain.LLMRequest) (<-chan domain.Delta, error) {
+	in, err := m.LLM.Stream(ctx, req)
+	if err != nil {
+		m.rec.flush(ctx)
+		return nil, err
+	}
+	out := make(chan domain.Delta)
+	go func() {
+		defer close(out)
+		defer m.rec.flush(ctx)
+		for d := range in {
+			out <- d
+		}
+	}()
+	return out, nil
+}
+
+// capLLM refuses calls once the ledger shows cap dollars spent in the calendar
+// month (UTC), so checks report unchecked and no date moves (D33). It fails
+// closed: if the ledger cannot be read, the call is refused.
+type capLLM struct {
+	domain.LLM
+	cap    float64
+	ledger domain.SpendLedger
+	rec    *spendRec // optional: flushes meter spend into the ledger before the check
+	now    func() time.Time
+}
+
+func (c *capLLM) check(ctx context.Context) error {
+	if c.rec != nil {
+		c.rec.flush(ctx)
+	}
+	spent, err := c.ledger.MonthTotal(ctx, c.now().UTC())
+	if err != nil {
+		return fmt.Errorf("spend ledger: %w", err)
+	}
+	if spent >= c.cap {
+		return llm.ErrBudget
+	}
+	return nil
 }
 
 func (c *capLLM) JSON(ctx context.Context, req domain.LLMRequest, out any) error {
-	if c.spent() >= c.cap {
-		return llm.ErrBudget
+	if err := c.check(ctx); err != nil {
+		return err
 	}
 	return c.LLM.JSON(ctx, req, out)
 }
 
 func (c *capLLM) Stream(ctx context.Context, req domain.LLMRequest) (<-chan domain.Delta, error) {
-	if c.spent() >= c.cap {
-		return nil, llm.ErrBudget
+	if err := c.check(ctx); err != nil {
+		return nil, err
 	}
 	return c.LLM.Stream(ctx, req)
 }

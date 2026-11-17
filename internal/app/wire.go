@@ -14,6 +14,7 @@ import (
 	"github.com/CrisH2307/repetition-study/internal/checker"
 	"github.com/CrisH2307/repetition-study/internal/course"
 	"github.com/CrisH2307/repetition-study/internal/domain"
+	"github.com/CrisH2307/repetition-study/internal/importer"
 	"github.com/CrisH2307/repetition-study/internal/llm"
 	"github.com/CrisH2307/repetition-study/internal/planner"
 	"github.com/CrisH2307/repetition-study/internal/srs"
@@ -48,13 +49,14 @@ func Wire(db DB, student, checkerLLM domain.LLM, checkerModel string, clock doma
 	sched := srs.New(db, clock)
 	chk := &checker.Checker{LLM: checkerLLM, Model: checkerModel, Log: log}
 	st := store.New(db)
+	notes := course.Notes{Store: st, Now: clock.Now}
 	eng := teach.New(userTeach{Store: st}, student, chk, sched, teach.Options{Log: log})
 	return Deps{
 		Auth:         &auth.Service{Store: st, Clock: clock},
 		SecureCookie: true,
 		Course:       st,
 		Reviews:      st,
-		Notes:        course.Notes{Store: st, Now: clock.Now},
+		Notes:        notes,
 		Today:        planner.Today{},
 		Own:          pgOwner{db: db, course: st},
 		PlannerFor: func(userID string) domain.Planner {
@@ -77,6 +79,10 @@ func Wire(db DB, student, checkerLLM domain.LLM, checkerModel string, clock doma
 			}
 			return out, nil
 		},
+		Feedback: st,
+		Privacy:  st,
+		Imports:  st,
+		Importer: &importer.Importer{Jobs: st, Courses: st, Review: st, Notes: notes, Now: clock.Now},
 		Planner:  planner.New(db, clock),
 		Subjects: courseSubjects{st},
 		Clock:    clock,
@@ -115,7 +121,10 @@ func Build(ctx context.Context, cfg Config) (*http.Server, func(), error) {
 		return nil, nil, fmt.Errorf("checker model: %w", err)
 	}
 	if cfg.MonthlyCapUSD > 0 {
-		checkerLLM = &capLLM{LLM: checkerLLM, cap: cfg.MonthlyCapUSD, total: func() float64 { _, _, c := meter.Total(); return c }, now: time.Now}
+		// Every model call is metered into the ledger; only the checker is stopped by the cap.
+		rec := &spendRec{ledger: store.New(pool), total: func() float64 { _, _, c := meter.Total(); return c }, now: time.Now}
+		student = metered{student, rec}
+		checkerLLM = &capLLM{LLM: metered{checkerLLM, rec}, cap: cfg.MonthlyCapUSD, ledger: rec.ledger, rec: rec, now: time.Now}
 	}
 	if n, err := failInterrupted(ctx, pool, store.New(pool)); err != nil {
 		pool.Close()

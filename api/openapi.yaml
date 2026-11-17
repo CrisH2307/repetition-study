@@ -184,6 +184,70 @@ paths:
       responses:
         "200": {description: User, content: {application/json: {schema: {$ref: "#/components/schemas/User"}}}}
         "401": {$ref: "#/components/responses/Error"}
+    delete:
+      summary: Delete my account and everything in it, review history included (D43). Cannot be undone.
+      description: Also signs out. The body must confirm, so a stray request deletes nothing.
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, required: [confirm], properties: {confirm: {type: string, enum: [delete my account]}}}}}
+      responses:
+        "204": {description: Deleted}
+        "400": {$ref: "#/components/responses/Error"}
+        "401": {$ref: "#/components/responses/Error"}
+  /v1/me/export:
+    get:
+      summary: Download my data as one JSON file (D37)
+      responses:
+        "200": {description: Everything I wrote and every schedule change, content: {application/json: {schema: {$ref: "#/components/schemas/UserExport"}}}}
+        "401": {$ref: "#/components/responses/Error"}
+  /v1/consent:
+    post:
+      summary: Record that I accepted this version of the consent text (D44). Repeating it changes nothing.
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, required: [text_version], properties: {text_version: {type: string, minLength: 1}}}}}
+      responses:
+        "201": {description: Recorded, content: {application/json: {schema: {$ref: "#/components/schemas/Consent"}}}}
+        "400": {$ref: "#/components/responses/Error"}
+  /v1/feedback:
+    get:
+      summary: This week's question and my answer, if any (D40)
+      responses:
+        "200": {description: Question, content: {application/json: {schema: {$ref: "#/components/schemas/FeedbackPrompt"}}}}
+        "401": {$ref: "#/components/responses/Error"}
+    post:
+      summary: Answer this week's question. A second answer replaces the first.
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, required: [answer], properties: {answer: {type: string, minLength: 1}}}}}
+      responses:
+        "201": {description: Saved, content: {application/json: {schema: {$ref: "#/components/schemas/FeedbackAnswer"}}}}
+        "400": {$ref: "#/components/responses/Error"}
+  /v1/courses/{id}/import:
+    post:
+      summary: Import concepts and claims from a CSV (concept, claim, kind, quote). Each quote must be on a Ready page (D38).
+      description: The first line is the header. Poll the import until status is not running.
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: {type: string, format: binary, description: A CSV file}
+      responses:
+        "202": {description: "Stored, status running", content: {application/json: {schema: {$ref: "#/components/schemas/ImportJob"}}}}
+        "400": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+  /v1/imports/{id}:
+    get:
+      summary: An import with counts and the rows it refused
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200": {description: Import, content: {application/json: {schema: {$ref: "#/components/schemas/ImportJob"}}}}
+        "404": {$ref: "#/components/responses/Error"}
   /v1/courses:
     get:
       summary: List my courses
@@ -745,3 +809,91 @@ components:
         notes: {type: array, items: {$ref: "#/components/schemas/Upload"}}
         cards: {type: array, items: {$ref: "#/components/schemas/StudyCard"}}
         mistakes: {type: array, items: {$ref: "#/components/schemas/Mistake"}}
+    # Contract v4 (Phase 2).
+    FeedbackAnswer:
+      type: object
+      required: [week_start, question, answer, created_at]
+      properties:
+        week_start: {type: string, format: date-time, description: Local Monday of the week}
+        question: {type: string}
+        answer: {type: string}
+        created_at: {type: string, format: date-time}
+    FeedbackPrompt:
+      type: object
+      required: [week_start, question, answer]
+      properties:
+        week_start: {type: string, format: date-time}
+        question: {type: string}
+        answer: {type: string, nullable: true, description: Null until answered}
+    Consent:
+      type: object
+      required: [text_version, accepted_at]
+      properties:
+        text_version: {type: string}
+        accepted_at: {type: string, format: date-time}
+    ImportStatus: {type: string, enum: [running, done, failed]}
+    ImportRowError:
+      type: object
+      required: [row, error]
+      properties:
+        row: {type: integer, minimum: 1, description: "Line number in the file, header is 1"}
+        error: {type: string}
+    ImportJob:
+      type: object
+      required: [id, subject_id, filename, status, rows_total, rows_imported, row_errors, created_at, finished_at]
+      properties:
+        id: {type: string}
+        subject_id: {type: string}
+        filename: {type: string}
+        status: {$ref: "#/components/schemas/ImportStatus"}
+        rows_total: {type: integer, minimum: 0}
+        rows_imported: {type: integer, minimum: 0}
+        row_errors: {type: array, items: {$ref: "#/components/schemas/ImportRowError"}}
+        created_at: {type: string, format: date-time}
+        finished_at: {type: string, format: date-time, nullable: true}
+    TaughtClaim:
+      type: object
+      required: [id, session_id, concept_id, student_text, turn_no]
+      properties:
+        id: {type: string}
+        session_id: {type: string}
+        concept_id: {type: string}
+        student_text: {type: string}
+        turn_no: {type: integer}
+    TeachTurn:
+      type: object
+      required: [session_id, turn_no, transcript, latex, assistant_text, created_at]
+      properties:
+        session_id: {type: string}
+        turn_no: {type: integer}
+        transcript: {type: string}
+        latex: {type: string}
+        assistant_text: {type: string}
+        created_at: {type: string, format: date-time}
+    SelfGrade:
+      type: object
+      required: [session_id, claim_id, rating]
+      properties:
+        session_id: {type: string}
+        claim_id: {type: string}
+        rating: {$ref: "#/components/schemas/SelfRating"}
+    UserExport:
+      type: object
+      required: [exported_at, user, consents, feedback, courses, concepts, uploads, pages, sessions, turns, taught_claims, reports, self_grades, disputes, review_events, imports]
+      properties:
+        exported_at: {type: string, format: date-time}
+        user: {$ref: "#/components/schemas/User"}
+        consents: {type: array, items: {$ref: "#/components/schemas/Consent"}}
+        feedback: {type: array, items: {$ref: "#/components/schemas/FeedbackAnswer"}}
+        courses: {type: array, items: {$ref: "#/components/schemas/Subject"}}
+        concepts: {type: array, items: {$ref: "#/components/schemas/Concept"}}
+        uploads: {type: array, items: {$ref: "#/components/schemas/Upload"}}
+        pages: {type: array, items: {$ref: "#/components/schemas/Page"}}
+        sessions: {type: array, items: {$ref: "#/components/schemas/TeachSession"}}
+        turns: {type: array, items: {$ref: "#/components/schemas/TeachTurn"}}
+        taught_claims: {type: array, items: {$ref: "#/components/schemas/TaughtClaim"}}
+        reports: {type: array, items: {$ref: "#/components/schemas/Report"}}
+        self_grades: {type: array, items: {$ref: "#/components/schemas/SelfGrade"}}
+        disputes: {type: array, items: {$ref: "#/components/schemas/Dispute"}}
+        review_events: {type: array, items: {$ref: "#/components/schemas/ReviewEvent"}}
+        imports: {type: array, items: {$ref: "#/components/schemas/ImportJob"}}

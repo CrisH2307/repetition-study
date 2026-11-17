@@ -1,7 +1,7 @@
 import type { Plugin } from 'vite'
 import type { IncomingMessage } from 'node:http'
 
-// In-memory fake of api/openapi.yaml v3 for `npm run dev` and the mock Playwright test.
+// In-memory fake of api/openapi.yaml v4 for `npm run dev` and the mock Playwright test.
 // It mimics the server's answers, not its rules: the real quote check lives in internal/cite.
 const S1 = '00000000-0000-0000-0000-0000000000s1'
 const C1 = '00000000-0000-0000-0000-00000000f001'
@@ -28,6 +28,14 @@ const claims: Rec[] = [
 const uploads: Rec[] = []
 const pages: Rec[] = []
 const blocks: Rec[] = []
+const imports: Rec[] = []
+const consents: Rec[] = []
+let feedback: Rec | null = null
+const QUESTION = 'How would you feel if you could no longer use this?'
+
+/** Split one CSV line on commas outside double quotes. Mock only; the server has its own parser. */
+const csvLine = (l: string) => (l.match(/("([^"]|"")*"|[^,]*)(,|$)/g) ?? []).slice(0, -1)
+  .map((f) => f.replace(/,$/, '').replace(/^"(.*)"$/s, '$1').replace(/""/g, '"').trim())
 
 const upStatus = (u: Rec) => {
   const ps = pages.filter((p) => p.upload_id === u.id)
@@ -96,6 +104,30 @@ export function mockApi(): Plugin {
         }
         if (!signedIn) return say(401, 'Please sign in.')
         if (url === '/auth/sign-out') { signedIn = false; return json(204) }
+        if (url === '/me' && m === 'DELETE') {
+          if (b().confirm !== 'delete my account') return say(400, 'Please type delete my account to confirm.')
+          signedIn = false; return json(204)
+        }
+        if (url === '/me/export') {
+          res.setHeader('Content-Disposition', 'attachment; filename="space-repetition-data.json"')
+          return json(200, { exported_at: iso(0), user: { id: 'u1', name: 'Dino', time_zone: 'America/Toronto' }, consents, feedback: feedback ? [feedback] : [],
+            courses, concepts, uploads, pages, sessions: [], turns: [], taught_claims: [], reports: [], self_grades: [], disputes: [], review_events: [], imports })
+        }
+        if (url === '/consent') {
+          if (!b().text_version) return say(400, 'Missing text_version.')
+          const c = consents.find((x) => x.text_version === b().text_version) ?? { text_version: b().text_version, accepted_at: iso(0) }
+          if (!consents.includes(c)) consents.push(c)
+          return json(201, c)
+        }
+        if (url === '/feedback') {
+          const week_start = iso(-((new Date().getDay() + 6) % 7))
+          if (m === 'POST') { feedback = { week_start, question: QUESTION, answer: b().answer, created_at: iso(0) }; return json(201, feedback) }
+          return json(200, { week_start: feedback?.week_start ?? week_start, question: QUESTION, answer: feedback?.answer ?? null })
+        }
+        if (seg[0] === 'imports') {
+          const j = imports.find((x) => x.id === seg[1])
+          return j ? json(200, j) : say(404, 'We could not find that import.')
+        }
         if (url === '/me') return json(200, { id: 'u1', name: 'Dino', time_zone: 'America/Toronto' })
 
         if (url === '/today') {
@@ -159,6 +191,28 @@ export function mockApi(): Plugin {
               u.status = 'needs_checking'; upStatus(u)
             }, 1000)
             return json(202, u)
+          }
+          if (seg[2] === 'import' && m === 'POST') {
+            const f = await new Request('http://x', { method: 'POST', headers: { 'content-type': req.headers['content-type'] ?? '' }, body: new Uint8Array(raw) }).formData()
+            const file = f.get('file') as File | null
+            if (!file) return say(400, 'Please choose a CSV file.')
+            const lines = (await file.text()).split(/\r?\n/).filter((l) => l.trim())
+            const j: Rec = { id: newId('import'), subject_id: c.id, filename: file.name, status: 'running', rows_total: Math.max(lines.length - 1, 0), rows_imported: 0, row_errors: [], created_at: iso(0), finished_at: null }
+            imports.push(j)
+            setTimeout(() => { // pretend to check each row in the background
+              lines.slice(1).forEach((l, i) => {
+                const [name, text, kind, quote] = csvLine(l)
+                const blk = quote && blocks.find((x) => x.subject_id === c.id && x.text_md.includes(quote))
+                if (!name || !text) return j.row_errors.push({ row: i + 2, error: 'Concept and claim are required.' })
+                if (!blk) return j.row_errors.push({ row: i + 2, error: 'This quote is not on a Ready page.' })
+                let k = concepts.find((x) => x.subject_id === c.id && x.name === name)
+                if (!k) concepts.push((k = { id: newId('concept'), subject_id: c.id, name }))
+                claims.push({ id: newId('claim'), concept_id: k.id, text, source_id: blk.source_id, locator: `page ${blk.page}`, required: true, kind: kind || 'statement', anchor: { block_id: blk.id, quote } })
+                j.rows_imported++
+              })
+              j.status = 'done'; j.finished_at = iso(0)
+            }, 800)
+            return json(202, j)
           }
           if (seg[2] === 'uploads') return json(200, uploads.filter((u) => u.subject_id === c.id).map(upStatus))
         }

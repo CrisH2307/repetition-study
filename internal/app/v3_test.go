@@ -305,16 +305,15 @@ func sourceOf(t *testing.T, s *student, c ready) string {
 // unchecked and no date moves (D33).
 func TestSpendCapGivesUncheckedReport(t *testing.T) {
 	checker := &fakes.LLM{JSONReply: `{"results":[]}`}
-	spent := 0.0
-	capped := &capLLM{LLM: checker, cap: 5, total: func() float64 { return spent }, now: time.Now}
-	capped.spent() // the month starts here, with nothing spent
+	ledger := &fakes.SpendLedger{}
+	capped := &capLLM{LLM: checker, cap: 5, ledger: ledger, now: time.Now}
 	e := newEnv(t, &fakes.LLM{Reply: "Why?"}, capped, "")
 	s := e.newStudent("Ana")
 	c := s.makeCourse("Stats", "Anamarker")
 	var ts domain.TeachSession
 	s.call("POST", "/v1/teach/sessions", fmt.Sprintf(`{"concept_id":%q}`, c.ConceptID), 201, &ts)
 	do(s.h, "POST", "/v1/teach/sessions/"+ts.ID+"/turns", `{"transcript":"The mean is the sum."}`)
-	spent = 5 // the cap is reached before the check
+	ledger.Add(context.Background(), time.Now(), 5) // the ledger shows the cap reached, as after a restart
 	var rep domain.Report
 	s.call("POST", "/v1/teach/sessions/"+ts.ID+"/finish", "", 200, &rep)
 	if rep.Status != domain.ReportUnchecked || rep.Schedule != nil {
@@ -326,23 +325,47 @@ func TestSpendCapGivesUncheckedReport(t *testing.T) {
 }
 
 func TestCapLLMResetsEachMonth(t *testing.T) {
-	spend, now := 0.0, time.Date(2026, 11, 30, 0, 0, 0, 0, time.UTC)
-	c := &capLLM{LLM: &fakes.LLM{JSONReply: `{}`}, cap: 2, total: func() float64 { return spend }, now: func() time.Time { return now }}
+	ledger, now := &fakes.SpendLedger{}, time.Date(2026, 11, 30, 0, 0, 0, 0, time.UTC)
+	c := &capLLM{LLM: &fakes.LLM{JSONReply: `{}`}, cap: 2, ledger: ledger, now: func() time.Time { return now }}
 	call := func() error { return c.JSON(context.Background(), domain.LLMRequest{}, &struct{}{}) }
 	if err := call(); err != nil {
 		t.Fatal(err)
 	}
-	spend = 2.5
+	ledger.Add(context.Background(), now, 2.5)
 	if err := call(); err != llm.ErrBudget {
 		t.Fatalf("over the cap: %v, want ErrBudget", err)
 	}
-	now = now.AddDate(0, 0, 2) // December: the month's spend starts again from here
+	now = now.AddDate(0, 0, 2) // December starts again from zero
 	if err := call(); err != nil {
 		t.Fatalf("new month: %v", err)
 	}
-	spend = 5
-	if err := call(); err != llm.ErrBudget {
-		t.Fatalf("over the cap again: %v", err)
+}
+
+// Spend reaches the ledger after each metered call, so a new process (a new
+// meter) still sees the month's total and the cap holds.
+func TestSpendSurvivesRestart(t *testing.T) {
+	ledger, now := &fakes.SpendLedger{}, time.Date(2026, 11, 10, 0, 0, 0, 0, time.UTC)
+	nowf := func() time.Time { return now }
+	meterSpend := 0.0
+	rec := &spendRec{ledger: ledger, total: func() float64 { return meterSpend }, now: nowf}
+	inner := &fakes.LLM{JSONReply: `{}`, Reply: "Why?"}
+	m := metered{inner, rec}
+	meterSpend = 1.25
+	if err := m.JSON(context.Background(), domain.LLMRequest{}, &struct{}{}); err != nil {
+		t.Fatal(err)
+	}
+	ch, _ := m.Stream(context.Background(), domain.LLMRequest{})
+	meterSpend = 2
+	for range ch {
+	}
+	time.Sleep(20 * time.Millisecond) // the stream's flush runs as it closes
+	if got, _ := ledger.MonthTotal(context.Background(), now); got != 2 {
+		t.Fatalf("ledger = %v, want 2 (each call's spend added once)", got)
+	}
+	// Restart: fresh recorder over the same ledger.
+	c := &capLLM{LLM: inner, cap: 2, ledger: ledger, rec: &spendRec{ledger: ledger, total: func() float64 { return 0 }, now: nowf}, now: nowf}
+	if err := c.JSON(context.Background(), domain.LLMRequest{}, &struct{}{}); err != llm.ErrBudget {
+		t.Fatalf("after restart: %v, want ErrBudget", err)
 	}
 }
 

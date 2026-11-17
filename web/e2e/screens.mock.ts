@@ -2,6 +2,8 @@ import { expect, test } from '@playwright/test'
 
 // One mock server for the whole file, so the tests run in order and share its state.
 test.describe.configure({ mode: 'serial' })
+// Consent, guide and the weekly question are covered in pilot.mock.ts; skip them here.
+test.beforeEach(({ page }) => page.addInitScript(() => ['consent:u1', 'guide:u1'].forEach((k) => localStorage.setItem(`sr:${k}`, k.startsWith('consent') ? 'draft-1' : '1'))))
 
 test('invite link signs in and shows Today', async ({ page }) => {
   await page.goto('/invite#demo')
@@ -91,7 +93,7 @@ test('week shows the date range, schedule with today and notes', async ({ page }
 
 test('phone width has no sideways scroll', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 800 })
-  for (const path of ['/invite#demo', '/#/week', '/#/course/00000000-0000-0000-0000-0000000000s1']) {
+  for (const path of ['/invite#demo', '/#/week', '/#/course/00000000-0000-0000-0000-0000000000s1', '/#/settings']) {
     await page.goto(path)
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375)

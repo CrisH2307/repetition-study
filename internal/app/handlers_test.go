@@ -57,6 +57,8 @@ type fakeStack struct {
 	raw     http.Handler // no cookie added
 	auth    *fakes.Auth
 	reviews *fakes.ReviewStore
+	imports *fakes.ImportStore
+	privacy *fakes.PrivacyStore
 	user    domain.User
 	token   string
 }
@@ -66,15 +68,19 @@ func newFake() *fakeStack {
 	auth := &fakes.Auth{Clock: clock}
 	courses := &fakes.CourseStore{}
 	reviews := &fakes.ReviewStore{Sessions: map[string]string{}}
+	imports := &fakes.ImportStore{Owners: map[string]string{}}
+	privacy := &fakes.PrivacyStore{Exports: map[string]domain.UserExport{}}
 	raw := NewHandler(Deps{
 		Teach: &fakes.TeachEngine{}, Sched: &fakes.Scheduler{Clock: clock}, Planner: fakes.Planner{},
 		Subjects: courseSubjects{courses}, Clock: clock,
 		Auth: auth, Course: courses, Reviews: reviews, Notes: fakes.CourseNotes{Store: courses},
 		Today: fakes.TodayPlanner{}, Own: allowAll{},
+		Feedback: &fakes.FeedbackStore{}, Privacy: privacy, Imports: imports, Importer: &fakes.Importer{Store: imports},
 	})
-	st := &fakeStack{raw: raw, auth: auth, reviews: reviews}
+	st := &fakeStack{raw: raw, auth: auth, reviews: reviews, imports: imports, privacy: privacy}
 	st.user, st.token = st.signIn("Ana")
 	st.h = signedIn{raw, st.token}
+	privacy.Exports[st.user.ID] = domain.UserExport{User: st.user}
 	return st
 }
 
@@ -154,6 +160,20 @@ func waitUpload(t *testing.T, h http.Handler, id string, want domain.UploadStatu
 	}
 	t.Fatalf("upload %s is %q, want %q", id, u.Status, want)
 	return u
+}
+
+// csvUpload posts a CSV file as the web app does.
+func csvUpload(h http.Handler, path, name, csv string) *httptest.ResponseRecorder {
+	var b bytes.Buffer
+	mw := multipart.NewWriter(&b)
+	fw, _ := mw.CreateFormFile("file", name)
+	fw.Write([]byte(csv))
+	mw.Close()
+	req := httptest.NewRequest("POST", path, &b)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
 }
 
 func do(h http.Handler, method, path, body string) *httptest.ResponseRecorder {
@@ -279,6 +299,46 @@ func TestHandlersMatchOpenAPI(t *testing.T) {
 	call("POST", "/v1/subjects", "/v1/subjects", `{"name":"","weekly_hours":4,"level":"beginner"}`, 400)
 	call("POST", "/v1/teach/sessions/{id}/finish", "/v1/teach/sessions/nope/finish", "", 404)
 	call("GET", "/v1/teach/sessions/{id}/report", "/v1/teach/sessions/nope/report", "", 404)
+
+	// Contract v4: consent, feedback, import, export and delete over the fakes.
+	call("POST", "/v1/consent", "/v1/consent", `{"text_version":"2026-11"}`, 201)
+	call("POST", "/v1/consent", "/v1/consent", `{"text_version":""}`, 400)
+	var fp domain.FeedbackPrompt
+	json.Unmarshal(call("GET", "/v1/feedback", "/v1/feedback", "", 200), &fp)
+	if fp.Question == "" || fp.Answer != nil {
+		t.Errorf("fresh prompt = %+v, want a question and no answer", fp)
+	}
+	call("POST", "/v1/feedback", "/v1/feedback", `{"answer":"Very disappointed"}`, 201)
+	call("POST", "/v1/feedback", "/v1/feedback", `{"answer":"  "}`, 400)
+	json.Unmarshal(call("GET", "/v1/feedback", "/v1/feedback", "", 200), &fp)
+	if fp.Answer == nil || *fp.Answer != "Very disappointed" {
+		t.Errorf("answered prompt = %+v", fp)
+	}
+	var c2 domain.Subject
+	json.Unmarshal(call("POST", "/v1/courses", "/v1/courses", `{"name":"Imports","weekly_hours":1,"level":"beginner"}`, 201), &c2)
+	st.imports.Owners[c2.ID] = st.user.ID
+	var job domain.ImportJob
+	rec = csvUpload(h, "/v1/courses/"+c2.ID+"/import", "claims.csv", "concept,claim,kind,quote\nMean,The mean is sum over count,definition,the sum divided by the count\n")
+	if rec.Code != 202 {
+		t.Fatalf("import: %d %s", rec.Code, rec.Body)
+	}
+	served["POST /v1/courses/{id}/import"] = true
+	check(t, doc, "POST", "/v1/courses/{id}/import", 202, rec.Body.Bytes())
+	json.Unmarshal(rec.Body.Bytes(), &job)
+	call("GET", "/v1/imports/{id}", "/v1/imports/"+job.ID, "", 200)
+	call("GET", "/v1/me/export", "/v1/me/export", "", 200)
+	if cd := do(h, "GET", "/v1/me/export", "").Header().Get("Content-Disposition"); !strings.HasPrefix(cd, "attachment") {
+		t.Errorf("export Content-Disposition = %q, want a download", cd)
+	}
+	call("DELETE", "/v1/me", "/v1/me", `{"confirm":"yes"}`, 400)
+	rec = do(h, "DELETE", "/v1/me", `{"confirm":"delete my account"}`)
+	served["DELETE /v1/me"] = true
+	if rec.Code != 204 || len(st.privacy.Deleted) != 1 {
+		t.Fatalf("delete me: %d, deleted %v", rec.Code, st.privacy.Deleted)
+	}
+	if cs := rec.Result().Cookies(); len(cs) != 1 || cs[0].MaxAge >= 0 {
+		t.Errorf("delete me must clear the cookie, got %+v", cs)
+	}
 
 	// Sign-out ends the session; redeem and healthz are the only open routes.
 	call("POST", "/v1/auth/sign-out", "/v1/auth/sign-out", "", 204)
