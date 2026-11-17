@@ -80,7 +80,7 @@ export function App() {
         {page === 'week' ? <Week />
           : page === 'courses' ? <Courses />
           : page === 'course' ? <Course id={id} start={start} />
-          : page === 'shared' ? <Shared token={id} />
+          : page === 'shared' ? <Shared key={id} token={id} />
           : page === 'upload' ? <PageCheck uploadId={id} />
           : page === 'page' ? <PageCheck pageId={id} />
           : page === 'settings' ? <Settings onDeleted={() => { location.hash = ''; setUser('deleted') }} />
