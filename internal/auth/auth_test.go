@@ -213,3 +213,66 @@ func TestRedeemRevokesOldSession(t *testing.T) {
 		t.Fatalf("old session still valid: %v", err)
 	}
 }
+
+func TestIdleSessionExpires(t *testing.T) {
+	s, _, clk := setup()
+	ctx := context.Background()
+	inv, _ := s.NewInvite(ctx, "Dino")
+	_, sess, _, _ := s.Redeem(ctx, inv)
+	s.UserFor(ctx, sess)
+	clk.Advance(domain.SessionIdleTTL - time.Hour)
+	if _, err := s.UserFor(ctx, sess); err != nil {
+		t.Fatalf("just under idle limit: %v", err)
+	}
+	clk.Advance(domain.SessionIdleTTL + time.Minute)
+	if _, err := s.UserFor(ctx, sess); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("idle 14 days: got %v, want ErrNotFound", err)
+	}
+}
+
+func TestSignOutEverywhereAndRevoke(t *testing.T) {
+	s, _, _ := setup()
+	ctx := context.Background()
+	inv, _ := s.NewInvite(ctx, "Dino")
+	_, a, _, _ := s.Redeem(ctx, inv)
+	_, b, _, _ := s.Redeem(ctx, inv)
+	if err := s.SignOutEverywhere(ctx, a); err != nil {
+		t.Fatal(err)
+	}
+	for _, tok := range []string{a, b} {
+		if _, err := s.UserFor(ctx, tok); !errors.Is(err, domain.ErrNotFound) {
+			t.Fatalf("session %s survived sign-out everywhere: %v", tok, err)
+		}
+	}
+	_, c, _, _ := s.Redeem(ctx, inv)
+	if err := s.RevokeInvite(ctx, inv); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.UserFor(ctx, c); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("session survived revoke: %v", err)
+	}
+	if _, _, _, err := s.Redeem(ctx, inv); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("revoked invite redeemed: %v", err)
+	}
+	if err := s.RevokeInvite(ctx, "nope"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("unknown invite: %v", err)
+	}
+}
+
+func TestSignOutAllQuery(t *testing.T) {
+	s, _, _ := setup()
+	ctx := context.Background()
+	inv, _ := s.NewInvite(ctx, "Dino")
+	_, a, _, _ := s.Redeem(ctx, inv)
+	_, b, _, _ := s.Redeem(ctx, inv)
+	r := httptest.NewRequest("POST", "/v1/auth/sign-out?all=true", nil)
+	r.AddCookie(&http.Cookie{Name: CookieName, Value: a})
+	rec := httptest.NewRecorder()
+	HTTP{Auth: s, Secure: true}.SignOut(rec, r)
+	if rec.Code != 204 {
+		t.Fatalf("code %d", rec.Code)
+	}
+	if _, err := s.UserFor(ctx, b); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("other session survived: %v", err)
+	}
+}

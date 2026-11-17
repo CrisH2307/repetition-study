@@ -1,0 +1,2 @@
+- Headers, rate limits, upload guard, poppler queue: `go test ./internal/app` pass.
+- Auth contract, store, fakes, migration 0007, `-revoke`, `?all=true`: auth, fakes, cmd/invite tests pass; store test skipped (no DATABASE_URL), unverified.

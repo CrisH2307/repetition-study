@@ -24,6 +24,7 @@ import (
 
 func main() {
 	name := flag.String("name", "", "student's name (required)")
+	revoke := flag.String("revoke", "", "revoke this invite (the link or its token) and end its sessions")
 	flag.Parse()
 	url := os.Getenv("DATABASE_URL")
 	if url == "" {
@@ -44,6 +45,12 @@ func main() {
 	if !ok {
 		log.Fatal("this build's store has no invites yet (needs P1-STORE)")
 	}
+	if *revoke != "" {
+		if err := revokeInvite(ctx, &auth.Service{Store: st}, *revoke, os.Stdout); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	if err := run(ctx, &auth.Service{Store: st}, *name, base, os.Stdout); err != nil {
 		log.Fatal(err)
 	}
@@ -56,5 +63,17 @@ func run(ctx context.Context, a domain.Auth, name, base string, out io.Writer) e
 		return err
 	}
 	_, err = fmt.Fprintf(out, "%s/invite#%s\n", strings.TrimRight(base, "/"), tok)
+	return err
+}
+
+// revokeInvite takes the whole link or just the token after "#".
+func revokeInvite(ctx context.Context, a domain.Auth, link string, out io.Writer) error {
+	if _, tok, ok := strings.Cut(link, "#"); ok {
+		link = tok
+	}
+	if err := a.RevokeInvite(ctx, strings.TrimSpace(link)); err != nil {
+		return err
+	}
+	_, err := fmt.Fprintln(out, "Invite revoked. Its sign-ins have ended.")
 	return err
 }

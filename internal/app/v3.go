@@ -203,8 +203,13 @@ func (a *api) createUpload(w http.ResponseWriter, r *http.Request) {
 		bad(w, "That file is not a PDF.")
 		return
 	}
+	if msg := uploads.reserve(user, int64(len(pdf)+len(text))); msg != "" {
+		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": msg})
+		return
+	}
 	u, err := a.Course.CreateUpload(r.Context(), user, domain.Upload{SubjectID: course, Filename: name}, pdf, text)
 	if err != nil {
+		uploads.release(user)
 		a.fail(w, r, err)
 		return
 	}
@@ -214,6 +219,9 @@ func (a *api) createUpload(w http.ResponseWriter, r *http.Request) {
 
 // readUpload never panics the server. A failure leaves plain words on the upload.
 func (a *api) readUpload(user, id string) {
+	defer uploads.release(user)
+	uploads.poppler <- struct{}{} // wait in line: only a few poppler runs at once on this machine
+	defer func() { <-uploads.poppler }()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute) // a restart is handled by failInterrupted at start
 	defer cancel()
 	fail := func(v any) {

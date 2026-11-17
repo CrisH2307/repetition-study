@@ -29,3 +29,18 @@ func TestRunPrintsRedeemableLink(t *testing.T) {
 		t.Fatal("blank name accepted")
 	}
 }
+
+func TestRevokeByLink(t *testing.T) {
+	ctx := context.Background()
+	a := &auth.Service{Store: &fakes.AuthStore{}, Clock: fakes.NewClock()}
+	var out bytes.Buffer
+	run(ctx, a, "Dino", "https://p.example", &out)
+	link := strings.TrimSpace(out.String())
+	out.Reset()
+	if err := revokeInvite(ctx, a, link, &out); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := a.Redeem(ctx, link[strings.Index(link, "#")+1:]); err == nil {
+		t.Fatal("revoked link still works")
+	}
+}

@@ -23,7 +23,7 @@ func (s *Store) RedeemInvite(ctx context.Context, tokenHash []byte, now time.Tim
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		var name string
 		var userID *string
-		if err := tx.QueryRow(ctx, `SELECT name, user_id::text FROM invites WHERE token_hash = $1 FOR UPDATE`,
+		if err := tx.QueryRow(ctx, `SELECT name, user_id::text FROM invites WHERE token_hash = $1 AND revoked_at IS NULL FOR UPDATE`,
 			tokenHash).Scan(&name, &userID); err != nil {
 			return nf(err)
 		}
@@ -52,9 +52,37 @@ func (s *Store) CreateSession(ctx context.Context, userID string, tokenHash []by
 
 func (s *Store) SessionUser(ctx context.Context, tokenHash []byte, now time.Time) (domain.User, error) {
 	var u domain.User
-	err := s.pool.QueryRow(ctx, `SELECT u.id::text, u.name, u.time_zone FROM auth_sessions a JOIN users u ON u.id = a.user_id
-		WHERE a.token_hash = $1 AND a.expires_at > $2`, tokenHash, now).Scan(&u.ID, &u.Name, &u.TimeZone)
-	return u, nf(err)
+	var seen *time.Time
+	err := s.pool.QueryRow(ctx, `SELECT u.id::text, u.name, u.time_zone, a.last_seen_at FROM auth_sessions a JOIN users u ON u.id = a.user_id
+		WHERE a.token_hash = $1 AND a.expires_at > $2 AND (a.last_seen_at IS NULL OR a.last_seen_at > $3)`,
+		tokenHash, now, now.Add(-domain.SessionIdleTTL)).Scan(&u.ID, &u.Name, &u.TimeZone, &seen)
+	if err != nil {
+		return u, nf(err)
+	}
+	if seen == nil || now.Sub(*seen) > time.Hour { // keep writes rare
+		_, err = s.pool.Exec(ctx, `UPDATE auth_sessions SET last_seen_at = $2 WHERE token_hash = $1`, tokenHash, now)
+	}
+	return u, err
+}
+
+func (s *Store) DeleteUserSessions(ctx context.Context, userID string) error {
+	_, err := s.pool.Exec(ctx, `DELETE FROM auth_sessions WHERE user_id = $1`, userID)
+	return err
+}
+
+func (s *Store) RevokeInvite(ctx context.Context, tokenHash []byte) error {
+	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		var userID *string
+		if err := tx.QueryRow(ctx, `UPDATE invites SET revoked_at = COALESCE(revoked_at, now()) WHERE token_hash = $1 RETURNING user_id::text`,
+			tokenHash).Scan(&userID); err != nil {
+			return nf(err)
+		}
+		if userID == nil {
+			return nil
+		}
+		_, err := tx.Exec(ctx, `DELETE FROM auth_sessions WHERE user_id = $1`, *userID)
+		return err
+	})
 }
 
 func (s *Store) DeleteSession(ctx context.Context, tokenHash []byte) error {
