@@ -17,6 +17,7 @@ import (
 	"github.com/CrisH2307/repetition-study/internal/importer"
 	"github.com/CrisH2307/repetition-study/internal/llm"
 	"github.com/CrisH2307/repetition-study/internal/planner"
+	"github.com/CrisH2307/repetition-study/internal/share"
 	"github.com/CrisH2307/repetition-study/internal/srs"
 	"github.com/CrisH2307/repetition-study/internal/store"
 	"github.com/CrisH2307/repetition-study/internal/teach"
@@ -83,6 +84,7 @@ func Wire(db DB, student, checkerLLM domain.LLM, checkerModel string, clock doma
 		Privacy:  st,
 		Imports:  st,
 		Importer: &importer.Importer{Jobs: st, Courses: st, Review: st, Notes: notes, Now: clock.Now},
+		Sharing:  &share.Service{Store: st, Users: st, Courses: st, Review: st, Notes: notes, Now: clock.Now},
 		Planner:  planner.New(db, clock),
 		Subjects: courseSubjects{st},
 		Clock:    clock,
