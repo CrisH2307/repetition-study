@@ -1,0 +1,3 @@
+- Installed @axe-core/playwright 4.14.0 (exact).
+- Added e2e/screens-a11y.mock.ts (7 tests). All pass on first axe run.
+- Math.tsx: htmlAndMathml. Mock suite 18/18, vitest 10/10, build ok.
