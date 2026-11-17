@@ -29,7 +29,6 @@ export function App() {
   const [user, setUser] = useState<User | null | 'out' | 'bad-link' | 'down' | 'deleted'>(null)
   const [path, setPath] = useState(route)
   const [session, setSession] = useState<Session | null>(null)
-  const [, agreed] = useState(0)
   useEffect(() => {
     const out = () => setUser('out')
     const nav = () => setPath(route())
@@ -38,7 +37,7 @@ export function App() {
     // cmd/invite prints <site>/invite#<token>; the hash keeps the token out of server logs
     const token = location.pathname === '/invite' ? location.hash.slice(1) : ''
     if (token) {
-      redeem(token).then((u) => { history.replaceState(null, '', '/'); setUser(u) }, () => setUser('bad-link'))
+      redeem(token).then(() => me()).then((u) => { history.replaceState(null, '', '/'); setUser(u) }, () => setUser('bad-link'))
     } else me().then(setUser, () => setUser((u) => (u === 'out' ? u : 'down'))) // a 401 already said 'out'
     return () => { window.removeEventListener(SIGNED_OUT, out); window.removeEventListener('hashchange', nav) }
   }, [])
@@ -60,7 +59,7 @@ export function App() {
   }
 
   const out = () => signOut().finally(() => setUser('out'))
-  if (flag.get(`consent:${user.id}`) !== CONSENT_VERSION) return <Consent user={user} onDone={() => agreed((n) => n + 1)} onSignOut={out} />
+  if (user.consent_version !== CONSENT_VERSION) return <Consent user={user} onDone={() => setUser({ ...user, consent_version: CONSENT_VERSION })} onSignOut={out} />
 
   const start: Start = async (concept_id, name) => setSession({ id: (await startSession(concept_id)).id, concept_id, name })
   if (session) {

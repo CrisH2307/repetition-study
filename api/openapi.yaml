@@ -658,6 +658,7 @@ components:
         id: {type: string}
         name: {type: string}
         time_zone: {type: string, description: IANA zone name}
+        consent_version: {type: string, nullable: true, description: "Only on GET /v1/me. Latest consent text version I accepted, or null (D44)."}
     UploadStatus: {type: string, enum: [reading, needs_checking, ready]}
     PageStatus: {type: string, enum: [needs_checking, ready]}
     BlockKind: {type: string, enum: [text, math, heading, figure]}

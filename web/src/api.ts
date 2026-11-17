@@ -9,7 +9,7 @@ export interface Report {
   session_id: string; concept_id: string; results: ClaimResult[]
   schedule: Schedule | null; status: 'checked' | 'unchecked'
 }
-export interface User { id: string; name: string; time_zone: string }
+export interface User { id: string; name: string; time_zone: string; consent_version?: string | null }
 export interface Subject { id: string; name: string; weekly_hours: number; level: string; weight: number; exam_date?: string }
 export interface TodayItem { concept_id: string; concept_name: string; subject_id: string; kind: 'teach' | 'recall'; minutes: number; due_at: string; reason: string }
 export interface CourseHours { subject_id: string; name: string; hours_used: number; hours_budget: number; reason: string }

@@ -44,15 +44,26 @@ Cost: Fly is paid. Managed Postgres plans start at about $38/month (Basic) plus 
    `RESTORE_URL=<scratch url> deploy/restore-test.sh backup-<date>.dump`.
 4. Pass: no errors, and the number is not 0. On failure copy the output to Cris and stop.
 
-## D. First invite
+## D. Invites and exports (run on Fly)
 
-On any computer with the repo and the live `DATABASE_URL` and `APP_URL` set:
+The image has the `invite` and `export` commands. Run them on the live machine, where `DATABASE_URL` and `APP_URL` are already set. `fly ssh console -C "<command>"` runs one command on the machine (flag `-C` per Fly docs: unverified, run `fly ssh console --help` to confirm). If the machine is asleep, the first call wakes it.
+
+Make an invite:
 
 ```
-go run ./cmd/invite -name "Dino"
+fly ssh console -C "invite -name Dino"
 ```
 
-It prints one link ending in `/invite#...`. Send it to the student. Each link is one use.
+It prints one link ending in `/invite#...`. Send it **privately** (D35): the link keeps working after first use and always signs in the same person, so it works like a password. It is how a student adds a second device. Anyone who has it can sign in as them.
+
+Pilot numbers and disputes as CSV:
+
+```
+fly ssh console -C "export -metrics" > metrics.csv
+fly ssh console -C "export -disputes" > disputes.csv
+```
+
+`-metrics -weeks 4` limits history (default 12). If the file has extra text at the top, open it and delete the lines above the header row (unverified whether `fly ssh` adds any). They print nothing but CSV when it works.
 
 ## E. Final check (step 5)
 

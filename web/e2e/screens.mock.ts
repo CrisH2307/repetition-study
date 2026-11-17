@@ -3,7 +3,10 @@ import { expect, test } from '@playwright/test'
 // One mock server for the whole file, so the tests run in order and share its state.
 test.describe.configure({ mode: 'serial' })
 // Consent, guide and the weekly question are covered in pilot.mock.ts; skip them here.
-test.beforeEach(({ page }) => page.addInitScript(() => ['consent:u1', 'guide:u1'].forEach((k) => localStorage.setItem(`sr:${k}`, k.startsWith('consent') ? 'draft-1' : '1'))))
+test.beforeEach(async ({ page, request }) => {
+  await request.post('/v1/consent', { data: { text_version: 'draft-1' } })
+  await page.addInitScript(() => localStorage.setItem('sr:guide:u1', '1'))
+})
 
 test('invite link signs in and shows Today', async ({ page }) => {
   await page.goto('/invite#demo')

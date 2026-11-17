@@ -30,8 +30,10 @@ Review per PR: boundary vs `.claude/boundaries.json`, CI green, diff read; `/cod
 | P1-STORE | #95 | #104 | merged |
 | P1-WEB | #99 | #105 | merged (started early, needs only the contract) |
 | P1-API | #100 | #110 | merged |
-| P1-POLISH | #113 | | building (D47) |
-| P1-DEPLOY | #114 | | building, Vercel plus Fly.io Toronto (D45) |
-| Test | #112 | | Cris tests (D47) |
+| P1-POLISH | #113 | #117 | merged (D47) |
+| P1-DEPLOY | #114 | #116, #136 | merged, Vercel plus Fly.io Toronto (D45); #137 closed, replaced by #136 |
+| Fix: seeded packs had no course sources | #111 | #119 | merged |
+| Test | #112 | | closed (D47) |
+| Release to main | | #135 (Phase 1 only), #139 (Phase 1 and 2) | merged and deployed |
 
 Rules from Cris (2026-11-16): no attribution footer or Co-Authored-By; every unit turns on PR auto-fix after opening its PR.
