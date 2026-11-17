@@ -105,6 +105,23 @@ func TestDomainJSONMatchesSpec(t *testing.T) {
 	for k, v := range v4 {
 		cases[k] = v
 	}
+	// Contract v5.
+	month, active := domain.PlanMonth, domain.EntitlementActive
+	share := domain.Share{ID: "sh1", SubjectID: "sub1", CreatedAt: now, OwnerID: "u1"}
+	pc := domain.PackClaim{Text: "t", Kind: domain.KindDefinition, Required: true}
+	v5 := map[string]any{
+		"User instructor":   domain.User{ID: "u1", Name: "Dino", TimeZone: "America/Toronto", IsInstructor: true},
+		"BillingStatus":     domain.BillingStatus{Enabled: true, Entitled: true, Plan: &month, Status: &active, PeriodEnd: &now},
+		"BillingStatus off": domain.BillingStatus{Entitled: true},
+		"Share":             domain.Share{ID: "sh1", SubjectID: "sub1", IncludesSources: true, CreatedAt: now, RevokedAt: &now},
+		"NewShare":          domain.NewShare{Share: share, Token: "tok"},
+		"PackClaim":         pc,
+		"PackPreview":       domain.PackPreview{CourseName: "Stats", OwnerName: "Dino", Concepts: []domain.PackConcept{{Name: "n", Claims: []domain.PackClaim{pc}}}, Sources: []string{}},
+		"PackImport":        domain.PackImport{SubjectID: "sub1", ConceptsAdded: 1, ClaimsAdded: 2, NeedsQuote: []domain.NeedsQuote{{ConceptID: "c1", Claim: pc}}},
+	}
+	for k, v := range v5 {
+		cases[k] = v
+	}
 	for name, v := range cases {
 		schema, _, _ := strings.Cut(name, " ")
 		raw, err := json.Marshal(v)
@@ -122,6 +139,20 @@ func TestDomainJSONMatchesSpec(t *testing.T) {
 		for key := range data.(map[string]any) {
 			if sv.Properties[key] == nil {
 				t.Errorf("%s: field %q is in internal/domain but not in the spec", name, key)
+			}
+		}
+	}
+
+	// Provider ids and share owners stay on the server.
+	sub := "sub_1"
+	for _, v := range []any{
+		domain.Entitlement{Plan: domain.PlanMonth, CustomerID: "cus_1", SubscriptionID: &sub},
+		domain.Share{ID: "sh1", OwnerID: "u1"},
+	} {
+		raw, _ := json.Marshal(v)
+		for _, secret := range []string{"cus_1", "sub_1", "u1"} {
+			if strings.Contains(string(raw), `"`+secret+`"`) {
+				t.Errorf("%T leaks %q: %s", v, secret, raw)
 			}
 		}
 	}
