@@ -78,3 +78,7 @@ span > .error { display:block; margin:8px 0 0; }
 .loading { color:var(--muted); }
 fieldset.grade legend { margin-bottom:8px; font-weight:600; }
 fieldset.grade label { margin:0; }
+button.danger { background:var(--bad); border-color:var(--bad); }
+button.danger:hover:not(:disabled) { background:#7d1709; border-color:#7d1709; }
+button.danger { background:var(--bad); border-color:var(--bad); }
+button.danger:hover:not(:disabled) { background:#7d1709; border-color:#7d1709; }
