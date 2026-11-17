@@ -8,7 +8,7 @@ A student explains a concept in a derivation-heavy course, typing LaTeX. An AI s
 
 ## Where we are
 
-Phase 1 and Phase 2 shipped to `main` in release #139 and are deployed: the web app on Vercel and the API on Fly.io Toronto. Phase 3 (billing, sharing, landing site) waits for gate G2 and Cris. Dino's test of the live site is #138. The notes below are the Phase 0 history.
+Phase 1 and Phase 2 shipped to `main` in release #139 and are deployed: the web app on Vercel and the API on Fly.io Toronto. Phase 3 (sharing, landing site, accessibility, hardening) is in progress; billing is deferred (D49). Dino's test of the live site is #138. The notes below are the Phase 0 history.
 
 Built and merged into `qa`: contract v2, citation verification (`internal/cite`), Postgres store, scheduler fixes, planner time zones, a vendor-neutral LLM layer with metering and a spend cap, the outage state (`unchecked`, no schedule change), the API handlers, a typed teach page in `web/`, never-taught concepts counting as due, a `fake-down` checker switch, `cmd/evalcheck` running all 8 gate suites, and frozen human labels (Dino and a classmate, kappa 0.964, 2 settled).
 
@@ -95,6 +95,23 @@ Not built (Cris on #107): study arms (D41) and the email digest (D42). Account d
 | 2 | P2-EVAL2 | `feature/eval-from-disputes` | Disputes Dino upholds become eval cases on the dev split; script to re-run the gate (Cris runs it, paid) | P2-CONTRACT |
 | 3 | P2-API | `feature/api-v4` | Handlers for the v4 endpoints, `cmd/export -deletions`, isolation test | wave 2 |
 | 3 | P2-WEB2 | `feature/web-pilot` | First-visit guide, empty states, feedback form, download and delete buttons | wave 2 |
+
+## Phase 3: launch features (planned 2026-11-16)
+
+Goal: launch features without payments (subscriptions wait until people use the product, D49): claim-only pack sharing with instructor packs, a landing page, an accessibility and phone pass, and load and security hardening. Decisions D48 to D53. Plan: `rpi/P3-MAIN/plan.md`. Gate G3 (review section 5) is judged after launch.
+
+Not built: per-user FSRS parameters (L-FSRSOPT) until months of review logs show a benefit on held-out reviews (D48).
+
+| Wave | Unit | Branch | Work | Needs |
+| --- | --- | --- | --- | --- |
+| 1 | P3-CONTRACT | `feature/contract-v5` | Shared packs, instructor flag; OpenAPI | nothing |
+| 1 | P3-SITE | `feature/landing-site` | Static landing page in `site/`, placeholder name, measured numbers only | nothing |
+| 1 | P3-A11Y | `feature/a11y-pass` | Accessibility and phone pass of the web app | nothing |
+| 1 | P3-LOAD | `chore/load-security` | Load tool for non-AI paths, security checklist, restore drill | nothing |
+| 2 | P3-HARDEN | `fix/security-gaps` | Fix the gaps in docs/SECURITY.md: upload and reading limits, rate limits, security headers, session and invite revoke | P3-LOAD |
+| 2 | P3-SHARE | `feature/pack-sharing` | Share a course as claims only; instructor packs with sources | P3-CONTRACT |
+| 3 | P3-API | `feature/api-v5` | Sharing handlers, isolation test | wave 2 |
+| 3 | P3-WEB | `feature/web-launch` | Share and import a pack, instructor badge | P3-CONTRACT |
 
 ## Cut order if time runs short
 

@@ -1,0 +1,2 @@
+Unit P3-A11Y, wave 1. Branch `feature/a11y-pass`. Sonnet, medium. Labels `User Story`, `phase-3`, `wave-1`.
+Files: `web/`, `rpi/P3-A11Y/`. Accessibility and phone pass, no new features or copy: add @axe-core/playwright (exact version) and run axe on every screen in the mock Playwright config with zero serious or critical violations; keyboard-only path through sign-in, teach, report and settings; labels for every input; focus returns after dialogs; KaTeX output has an accessible name; reduced-motion respected; no horizontal scroll at 320px. Fix what fails.
