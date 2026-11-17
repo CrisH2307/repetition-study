@@ -9,7 +9,7 @@ export interface Report {
   session_id: string; concept_id: string; results: ClaimResult[]
   schedule: Schedule | null; status: 'checked' | 'unchecked'
 }
-export interface User { id: string; name: string; time_zone: string }
+export interface User { id: string; name: string; time_zone: string; consent_version?: string | null }
 export interface Subject { id: string; name: string; weekly_hours: number; level: string; weight: number; exam_date?: string }
 export interface TodayItem { concept_id: string; concept_name: string; subject_id: string; kind: 'teach' | 'recall'; minutes: number; due_at: string; reason: string }
 export interface CourseHours { subject_id: string; name: string; hours_used: number; hours_budget: number; reason: string }
@@ -29,6 +29,11 @@ export interface FeedbackPrompt { week_start: string; question: string; answer: 
 export interface ImportJob { id: string; subject_id: string; filename: string; status: 'running' | 'done' | 'failed'; rows_total: number; rows_imported: number; row_errors: { row: number; error: string }[]; created_at: string; finished_at: string | null }
 
 /** Fired on any 401 so the app can show the signed-out screen. */
+export interface NewShare { id: string; subject_id: string; includes_sources: boolean; created_at: string; revoked_at: string | null; token: string }
+export interface PackClaim { text: string; kind: ClaimKind; required: boolean }
+export interface PackPreview { course_name: string; owner_name: string; instructor: boolean; concepts: { name: string; claims: PackClaim[] }[]; sources: string[] }
+export interface PackImport { subject_id: string; concepts_added: number; claims_added: number; uploads_copied: number; needs_quote: { concept_id: string; claim: PackClaim }[] }
+
 export const SIGNED_OUT = 'signed-out'
 
 /** One fetch helper: plain-words errors from the server, 401 means signed out. */
@@ -112,3 +117,8 @@ export async function sendTurn(id: string, transcript: string, onEvent: (e: SSEE
     p.events.forEach(onEvent)
   }
 }
+
+export const makeShare = (course: string) => call<NewShare>(`/v1/courses/${course}/share`, 'POST', {})
+export const revokeShare = (id: string) => call<void>(`/v1/shares/${id}`, 'DELETE')
+export const getShared = (token: string) => call<PackPreview>(`/v1/shared/${encodeURIComponent(token)}`)
+export const importShared = (token: string, subject_id: string) => call<PackImport>(`/v1/shared/${encodeURIComponent(token)}/import`, 'POST', { subject_id })

@@ -34,10 +34,9 @@ const api = <T>(page: Page, method: string, path: string, body?: unknown, form?:
 async function signInWithCourse(page: Page, base: string) {
   const out = execSync(`go run ./cmd/invite -name "e2e ${Date.now()}"`, { cwd: '..', env: { ...process.env, DATABASE_URL: db, APP_URL: base } }).toString()
   await page.goto(`${base}/invite#${out.trim().split('#')[1]}`)
-  // Consent is tested in pilot.mock.ts. Mark it accepted in this browser so the loop runs on any API version.
+  // Consent is tested in pilot.mock.ts. Accept it through the API so the loop runs.
   await expect(page.getByRole('button', { name: 'I agree' })).toBeVisible()
-  const me = await api<{ id: string }>(page, 'GET', '/v1/me')
-  await page.evaluate((id) => localStorage.setItem(`sr:consent:${id}`, 'draft-1'), me.id)
+  await api(page, 'POST', '/v1/consent', { text_version: 'draft-1' })
   const course = await api<{ id: string }>(page, 'POST', '/v1/courses', { name: 'Probability', weekly_hours: 3, level: 'intermediate' })
   const up = await api<{ id: string }>(page, 'POST', `/v1/courses/${course.id}/uploads`, undefined, { filename: 'notes.txt', text: unit.sources[0].text })
   await expect.poll(async () => (await api<{ status: string }>(page, 'GET', `/v1/uploads/${up.id}`)).status).toBe('needs_checking')
@@ -80,4 +79,29 @@ test('checker down shows the banner and moves no date', async ({ page }) => {
   await page.getByRole('button', { name: 'Try later' }).click()
   await expect(page.getByRole('button', { name: 'Start Poisson superposition' })).toBeVisible()
   await expect(page.locator('li.topic', { hasText: 'Poisson superposition' })).toContainText('Not taught yet') // the Today screen's wording since wave 2
+})
+
+// Sharing over the real API: Ana shares her course, Bo (a second signed-in student) previews and
+// adds it, then Ana turns the link off and Bo's next look gives "not found". No sign-in, no preview.
+test('share a course, import it, then revoke the link', async ({ page, browser }) => {
+  const base = 'http://localhost:15173'
+  await signInWithCourse(page, base)
+  const [course] = await api<{ id: string; name: string }[]>(page, 'GET', '/v1/courses')
+  const share = await api<{ id: string; token: string }>(page, 'POST', `/v1/courses/${course.id}/share`, {})
+
+  const bo = await (await browser.newContext()).newPage()
+  const link = `${base}/#/shared/${share.token}`
+  await bo.goto(link)
+  await expect(bo.getByRole('button', { name: 'I agree' })).toHaveCount(0) // not signed in: no preview
+  await signInWithCourse(bo, base)
+  await bo.goto(link)
+  await expect(bo.getByRole('heading', { name: 'Probability' })).toBeVisible()
+  await expect(bo.getByText('Exponential races')).toBeVisible()
+  await bo.getByRole('button', { name: 'Add to my course' }).click()
+  await expect(bo.getByRole('status')).toContainText('Added')
+
+  await api(page, 'DELETE', `/v1/shares/${share.id}`)
+  await bo.goto(base)
+  await bo.goto(link)
+  await expect(bo.getByRole('alert')).toBeVisible()
 })

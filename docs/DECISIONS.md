@@ -51,6 +51,12 @@ One log. Newest change at the top of each row. On 2026-11-09 Cris and Dino appro
 | D45 | Hosting: Vercel serves the web app (Cris, 2026-11-16). The Go API (SSE, background PDF reading with poppler) runs as the Docker image on Fly.io in Toronto (`yyz`, Cris 2026-11-16) behind Vercel rewrites of `/v1/*`, so the cookie stays same-origin. If SSE does not pass through the Vercel rewrite, the fallback is serving the web app from the API image on Fly. | Approved (Cris, 2026-11-16) |
 | D46 | Sign-in stays invite links (D29, D35) for the launch; another method later. Domain later; the Vercel address until then (Cris, 2026-11-16). | Approved (Cris, 2026-11-16) |
 | D47 | Launch first: Phase 1 goes to market after a UI polish pass with the ui-ux-pro-max skill. Polish only: no new features, copy or imagery. Phase 2 waits until the launch build is out. Cris tests in place of Dino for now. | Approved (Cris, 2026-11-16) |
+| D48 | Phase 3 scope and waves as in PLAN.md. Per-user FSRS parameters are not built until the review log shows a benefit on held-out reviews. | Default (main agent, 2026-11-16) |
+| D49 | Billing and subscriptions are deferred until people use the product (Cris, 2026-11-16: "keep the subscription later"). Nothing about payments is built. Free through the pilot (D15) stands. | Approved (Cris, 2026-11-16) |
+| D50 | Sharing: a share link gives claims only (concept names, claim text, kind), never quotes or course text. The receiver re-anchors each claim to a quote in their own Ready notes (D28), so nobody's course material moves between accounts. | Default (main agent, 2026-11-16) |
+| D51 | Instructor packs: a user Cris marks as instructor (command, not self-serve) can publish a pack that includes their own uploaded notes, shown with an "instructor approved" badge. Only instructors can share source text (D7). | Default (main agent, 2026-11-16), needs Cris |
+| D52 | Landing page: static `site/`, separate Vercel project, not public until the name (D16) is chosen. Shows only measured numbers (gate G0, and pilot numbers once measured). No learning-gain claims. | Default (main agent, 2026-11-16) |
+| D53 | Load and security: a Go load tool for non-AI paths (bar p95 under 50 ms at 500 concurrent users, G3), run locally or on a staging copy only, never against production; a written security checklist and a restore drill Cris runs. | Default (main agent, 2026-11-16) |
 
 ## Record of changes to earlier decisions
 

@@ -5,7 +5,7 @@ import { App, dueText, mondayOf } from './App'
 import { reasonLine } from './Teach'
 import type { Report } from './api'
 
-beforeEach(() => localStorage.setItem('sr:consent:u', 'draft-1'))
+const meOk = { id: 'u', name: 'D', time_zone: 'UTC', consent_version: 'draft-1' }
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); location.hash = ''; localStorage.clear() })
 
 const res = (body: unknown, status = 200) => new Response(status === 204 ? null : JSON.stringify(body), { status })
@@ -28,7 +28,7 @@ test('a 401 shows the signed-out screen', async () => {
 })
 
 test('Today shows minutes, red due date and Study Time with its reason', async () => {
-  vi.stubGlobal('fetch', vi.fn(async (url: string) => res(url.includes('/me') ? { id: 'u', name: 'D', time_zone: 'UTC' } : today)))
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => res(url.includes('/me') ? meOk : today)))
   render(<App />)
   expect((await screen.findByText('Due today')).className).toBe('soon')
   expect(screen.getByText('1.2 / 3.5 h')).toBeTruthy()
@@ -38,7 +38,7 @@ test('Today shows minutes, red due date and Study Time with its reason', async (
 test('self-grade is saved per key idea and unchecked report says nothing changed', async () => {
   const rep = { session_id: 's', concept_id: 'c', results: [{ claim_id: 'k1', student_text: 'x', label: 'supported', citation: null, correction: null, probe_hint: null }], schedule: null, status: 'unchecked' }
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
-    if (url.includes('/me')) return res({ id: 'u', name: 'D', time_zone: 'UTC' })
+    if (url.includes('/me')) return res(meOk)
     if (url.includes('/today')) return res(today)
     if (url.endsWith('/sessions')) return res({ id: 's' })
     if (url.endsWith('/claims')) return res([{ id: 'k1', concept_id: 'c', text: 'Key idea one', source_id: 'x', locator: 'page 1', required: true }])
@@ -86,8 +86,7 @@ test('reason line uses the server words, else counts the labels', () => {
 })
 
 test('consent comes first and is recorded with its version', async () => {
-  localStorage.clear()
-  const fetchMock = vi.fn(async (url: string) => res(url.includes('/me') ? { id: 'u', name: 'D', time_zone: 'UTC' } : url.includes('/consent') ? { text_version: 'draft-1', accepted_at: '' } : today))
+  const fetchMock = vi.fn(async (url: string) => res(url.includes('/me') ? { ...meOk, consent_version: null } : url.includes('/consent') ? { text_version: 'draft-1', accepted_at: '' } : today))
   vi.stubGlobal('fetch', fetchMock)
   render(<App />)
   await userEvent.click(await screen.findByRole('button', { name: 'I agree' }))

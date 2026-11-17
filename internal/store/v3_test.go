@@ -78,6 +78,27 @@ func TestAuthStore(t *testing.T) {
 	_, err = s.SessionUser(bg, []byte("s1"), now)
 	isNF(t, "deleted session", err)
 	mustOK(t, s.DeleteSession(bg, []byte("s1"))) // twice is fine
+
+	// Idle expiry, sign out everywhere, revoke (P3-HARDEN).
+	mustOK(t, s.CreateSession(bg, u1.ID, []byte("s2"), now.AddDate(0, 3, 0)))
+	mustOK(t, s.CreateSession(bg, u1.ID, []byte("s3"), now.AddDate(0, 3, 0)))
+	_, err = s.SessionUser(bg, []byte("s2"), now) // first use stamps last_seen_at
+	mustOK(t, err)
+	_, err = s.SessionUser(bg, []byte("s2"), now.Add(domain.SessionIdleTTL+time.Hour))
+	isNF(t, "idle session", err)
+	_, err = s.SessionUser(bg, []byte("s3"), now)
+	mustOK(t, err)
+	mustOK(t, s.DeleteUserSessions(bg, u1.ID))
+	_, err = s.SessionUser(bg, []byte("s3"), now)
+	isNF(t, "signed out everywhere", err)
+	mustOK(t, s.CreateSession(bg, u1.ID, []byte("s4"), now.Add(time.Hour)))
+	mustOK(t, s.RevokeInvite(bg, []byte("h1")))
+	mustOK(t, s.RevokeInvite(bg, []byte("h1"))) // twice is fine
+	_, err = s.SessionUser(bg, []byte("s4"), now)
+	isNF(t, "session of revoked invite", err)
+	_, err = s.RedeemInvite(bg, []byte("h1"), now)
+	isNF(t, "revoked invite", err)
+	isNF(t, "unknown revoke", s.RevokeInvite(bg, []byte("nope")))
 }
 
 func setup(t *testing.T) (*store.Store, domain.User, domain.User, domain.Subject, domain.Concept, domain.Upload, domain.Page) {

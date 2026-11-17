@@ -248,6 +248,43 @@ paths:
       responses:
         "200": {description: Import, content: {application/json: {schema: {$ref: "#/components/schemas/ImportJob"}}}}
         "404": {$ref: "#/components/responses/Error"}
+  /v1/courses/{id}/share:
+    post:
+      summary: Make a share link for my course. It carries concept names and claim text only, never quotes or notes (D50).
+      description: include_sources adds my Ready notes and is allowed for instructors only (D51), else 400. The token is shown once.
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody:
+        required: false
+        content: {application/json: {schema: {type: object, properties: {include_sources: {type: boolean, default: false}}}}}
+      responses:
+        "201": {description: Link made, content: {application/json: {schema: {$ref: "#/components/schemas/NewShare"}}}}
+        "400": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+  /v1/shares/{id}:
+    delete:
+      summary: Turn off a share link. The link then gives 404.
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "204": {description: Revoked}
+        "404": {$ref: "#/components/responses/Error"}
+  /v1/shared/{token}:
+    get:
+      summary: What a share link holds (D50). Needs sign-in.
+      parameters: [{$ref: "#/components/parameters/Token"}]
+      responses:
+        "200": {description: Pack, content: {application/json: {schema: {$ref: "#/components/schemas/PackPreview"}}}}
+        "404": {$ref: "#/components/responses/Error"}
+  /v1/shared/{token}/import:
+    post:
+      summary: Add a shared pack to my course. Each claim needs a quote from my own Ready notes (or the copied instructor notes); the rest come back in needs_quote.
+      parameters: [{$ref: "#/components/parameters/Token"}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, required: [subject_id], properties: {subject_id: {type: string}}}}}
+      responses:
+        "200": {description: Imported, content: {application/json: {schema: {$ref: "#/components/schemas/PackImport"}}}}
+        "400": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
   /v1/courses:
     get:
       summary: List my courses
@@ -465,6 +502,7 @@ components:
     session: {type: apiKey, in: cookie, name: session}
   parameters:
     Id: {name: id, in: path, required: true, schema: {type: string}}
+    Token: {name: token, in: path, required: true, schema: {type: string}}
   responses:
     Error:
       description: Error
@@ -658,6 +696,8 @@ components:
         id: {type: string}
         name: {type: string}
         time_zone: {type: string, description: IANA zone name}
+        consent_version: {type: string, nullable: true, description: "Only on GET /v1/me. Latest consent text version I accepted, or null (D44)."}
+        is_instructor: {type: boolean, description: "Set by Cris only (D51)."}
     UploadStatus: {type: string, enum: [reading, needs_checking, ready]}
     PageStatus: {type: string, enum: [needs_checking, ready]}
     BlockKind: {type: string, enum: [text, math, heading, figure]}
@@ -897,3 +937,59 @@ components:
         disputes: {type: array, items: {$ref: "#/components/schemas/Dispute"}}
         review_events: {type: array, items: {$ref: "#/components/schemas/ReviewEvent"}}
         imports: {type: array, items: {$ref: "#/components/schemas/ImportJob"}}
+    Share:
+      type: object
+      required: [id, subject_id, includes_sources, created_at, revoked_at]
+      properties:
+        id: {type: string}
+        subject_id: {type: string}
+        includes_sources: {type: boolean}
+        created_at: {type: string, format: date-time}
+        revoked_at: {type: string, format: date-time, nullable: true}
+    NewShare:
+      type: object
+      required: [id, subject_id, includes_sources, created_at, revoked_at, token]
+      properties:
+        id: {type: string}
+        subject_id: {type: string}
+        includes_sources: {type: boolean}
+        created_at: {type: string, format: date-time}
+        revoked_at: {type: string, format: date-time, nullable: true}
+        token: {type: string, description: Shown once. Only its hash is stored.}
+    PackClaim:
+      type: object
+      required: [text, kind, required]
+      properties:
+        text: {type: string}
+        kind: {$ref: "#/components/schemas/ClaimKind"}
+        required: {type: boolean}
+    PackConcept:
+      type: object
+      required: [name, claims]
+      properties:
+        name: {type: string}
+        claims: {type: array, items: {$ref: "#/components/schemas/PackClaim"}}
+    PackPreview:
+      type: object
+      required: [course_name, owner_name, instructor, concepts, sources]
+      properties:
+        course_name: {type: string}
+        owner_name: {type: string}
+        instructor: {type: boolean, description: "Instructor approved pack with notes (D51)"}
+        concepts: {type: array, items: {$ref: "#/components/schemas/PackConcept"}}
+        sources: {type: array, items: {type: string}, description: "File names of included notes, empty unless instructor"}
+    NeedsQuote:
+      type: object
+      required: [concept_id, claim]
+      properties:
+        concept_id: {type: string}
+        claim: {$ref: "#/components/schemas/PackClaim"}
+    PackImport:
+      type: object
+      required: [subject_id, concepts_added, claims_added, uploads_copied, needs_quote]
+      properties:
+        subject_id: {type: string}
+        concepts_added: {type: integer, minimum: 0}
+        claims_added: {type: integer, minimum: 0}
+        uploads_copied: {type: integer, minimum: 0}
+        needs_quote: {type: array, items: {$ref: "#/components/schemas/NeedsQuote"}}

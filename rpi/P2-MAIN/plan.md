@@ -10,3 +10,14 @@ Note: CLAUDE.md says "review_events is append-only". D43 adds one exception; CLA
 ## Status
 | Unit | Issue | PR | State |
 | --- | --- | --- | --- |
+| P2-CONTRACT | #118 | #120 | merged |
+| P2-STORE | #121 | #129 | merged |
+| P2-METRICS | #122 | #126 | merged |
+| P2-PRIVACY | #123 | #130 | merged |
+| P2-IMPORT | #124 | #127 | merged |
+| P2-EVAL2 | #125 | #128 | merged |
+| P2-API | #131 | #134 | merged |
+| P2-WEB2 | #132 | #133 | merged |
+| Release to main | | #139 | merged and deployed (Vercel plus Fly.io Toronto) |
+| Test | #138 | | open: Dino tests the live site |
+| Finish leftovers | #140 | | this PR |

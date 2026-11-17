@@ -351,5 +351,78 @@
       "web/",
       "rpi/P1-POLISH/"
     ]
+  },
+  "P3-CONTRACT": {
+    "branch": "feature/contract-v5",
+    "allow": [
+      "internal/domain/",
+      "api/",
+      "migrations/",
+      "internal/fakes/",
+      "internal/app/handlers_test.go",
+      "rpi/P3-CONTRACT/"
+    ]
+  },
+  "P3-SITE": {
+    "branch": "feature/landing-site",
+    "allow": [
+      "site/",
+      "rpi/P3-SITE/"
+    ]
+  },
+  "P3-A11Y": {
+    "branch": "feature/a11y-pass",
+    "allow": [
+      "web/",
+      "rpi/P3-A11Y/"
+    ]
+  },
+  "P3-LOAD": {
+    "branch": "chore/load-security",
+    "allow": [
+      "cmd/loadtest/",
+      "docs/SECURITY.md",
+      "docs/RESTORE.md",
+      "rpi/P3-LOAD/"
+    ]
+  },
+  "P3-SHARE": {
+    "branch": "feature/pack-sharing",
+    "allow": [
+      "internal/share/",
+      "internal/store/share.go",
+      "internal/store/share_test.go",
+      "cmd/instructor/",
+      "rpi/P3-SHARE/"
+    ]
+  },
+  "P3-API": {
+    "branch": "feature/api-v5",
+    "allow": [
+      "internal/app/",
+      "cmd/api/",
+      "rpi/P3-API/"
+    ]
+  },
+  "P3-WEB": {
+    "branch": "feature/web-launch",
+    "allow": [
+      "web/",
+      "rpi/P3-WEB/"
+    ]
+  },
+  "P3-HARDEN": {
+    "branch": "fix/security-gaps",
+    "allow": [
+      "internal/auth/",
+      "cmd/invite/",
+      "cmd/api/",
+      "internal/app/middleware.go",
+      "internal/app/middleware_test.go",
+      "internal/app/v3.go",
+      "internal/app/v3_test.go",
+      "docs/SECURITY.md",
+      "rpi/P3-HARDEN/"
+    ]
   }
 }

@@ -24,6 +24,8 @@ type User struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
 	TimeZone string `json:"time_zone"` // IANA name
+	// IsInstructor is set by cmd/instructor only (D51, contract v5).
+	IsInstructor bool `json:"is_instructor"`
 }
 
 type Invite struct {
@@ -259,7 +261,18 @@ type AuthStore interface {
 	// SessionUser returns ErrNotFound for an unknown or expired session.
 	SessionUser(ctx context.Context, tokenHash []byte, now time.Time) (User, error)
 	DeleteSession(ctx context.Context, tokenHash []byte) error
+	// DeleteUserSessions ends every session of the user (sign out everywhere).
+	DeleteUserSessions(ctx context.Context, userID string) error
+	// RevokeInvite ends the invite: RedeemInvite returns ErrNotFound for it from
+	// now on, and the session of its user, if any, are deleted. ErrNotFound for
+	// an unknown hash. Revoking twice is fine.
+	RevokeInvite(ctx context.Context, tokenHash []byte) error
 }
+
+// SessionIdleTTL is how long a session may go unused before SessionUser
+// returns ErrNotFound for it, on top of its fixed expiry. The store records the
+// last use at most once an hour.
+const SessionIdleTTL = 14 * 24 * time.Hour
 
 // Auth is sign-in by invite link. P1-AUTH implements it; the HTTP middleware
 // and cookie live in internal/auth.
@@ -271,6 +284,10 @@ type Auth interface {
 	// UserFor returns ErrNotFound for a missing, tampered or expired session.
 	UserFor(ctx context.Context, sessionToken string) (User, error)
 	SignOut(ctx context.Context, sessionToken string) error
+	// SignOutEverywhere ends every session of the user the token belongs to.
+	SignOutEverywhere(ctx context.Context, sessionToken string) error
+	// RevokeInvite ends an invite token and its user's sessions.
+	RevokeInvite(ctx context.Context, inviteToken string) error
 }
 
 // CourseStore holds courses, concepts, uploads, pages, blocks and claims.

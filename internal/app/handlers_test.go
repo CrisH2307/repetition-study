@@ -59,6 +59,7 @@ type fakeStack struct {
 	reviews *fakes.ReviewStore
 	imports *fakes.ImportStore
 	privacy *fakes.PrivacyStore
+	sharing *fakes.Sharing
 	user    domain.User
 	token   string
 }
@@ -70,14 +71,16 @@ func newFake() *fakeStack {
 	reviews := &fakes.ReviewStore{Sessions: map[string]string{}}
 	imports := &fakes.ImportStore{Owners: map[string]string{}}
 	privacy := &fakes.PrivacyStore{Exports: map[string]domain.UserExport{}}
+	sharing := &fakes.Sharing{Store: &fakes.ShareStore{}, Clock: clock, Packs: map[string]domain.PackPreview{}}
 	raw := NewHandler(Deps{
 		Teach: &fakes.TeachEngine{}, Sched: &fakes.Scheduler{Clock: clock}, Planner: fakes.Planner{},
 		Subjects: courseSubjects{courses}, Clock: clock,
 		Auth: auth, Course: courses, Reviews: reviews, Notes: fakes.CourseNotes{Store: courses},
 		Today: fakes.TodayPlanner{}, Own: allowAll{},
 		Feedback: &fakes.FeedbackStore{}, Privacy: privacy, Imports: imports, Importer: &fakes.Importer{Store: imports},
+		Sharing: sharing,
 	})
-	st := &fakeStack{raw: raw, auth: auth, reviews: reviews, imports: imports, privacy: privacy}
+	st := &fakeStack{raw: raw, auth: auth, reviews: reviews, imports: imports, privacy: privacy, sharing: sharing}
 	st.user, st.token = st.signIn("Ana")
 	st.h = signedIn{raw, st.token}
 	privacy.Exports[st.user.ID] = domain.UserExport{User: st.user}
@@ -326,6 +329,15 @@ func TestHandlersMatchOpenAPI(t *testing.T) {
 	check(t, doc, "POST", "/v1/courses/{id}/import", 202, rec.Body.Bytes())
 	json.Unmarshal(rec.Body.Bytes(), &job)
 	call("GET", "/v1/imports/{id}", "/v1/imports/"+job.ID, "", 200)
+	// Contract v5: share, preview, import, revoke.
+	st.sharing.Packs[course.ID] = domain.PackPreview{CourseName: "Statistics", OwnerName: "Ana", Concepts: []domain.PackConcept{{Name: "Mean", Claims: []domain.PackClaim{{Text: "The mean is the sum over the count.", Kind: domain.KindStatement}}}}}
+	var ns domain.NewShare
+	json.Unmarshal(call("POST", "/v1/courses/{id}/share", cp+"/share", "", 201), &ns)
+	call("GET", "/v1/shared/{token}", "/v1/shared/"+ns.Token, "", 200)
+	call("POST", "/v1/shared/{token}/import", "/v1/shared/"+ns.Token+"/import", fmt.Sprintf(`{"subject_id":%q}`, course.ID), 200)
+	call("DELETE", "/v1/shares/{id}", "/v1/shares/"+ns.ID, "", 204)
+	call("GET", "/v1/shared/{token}", "/v1/shared/"+ns.Token, "", 404)
+
 	call("GET", "/v1/me/export", "/v1/me/export", "", 200)
 	if cd := do(h, "GET", "/v1/me/export", "").Header().Get("Content-Disposition"); !strings.HasPrefix(cd, "attachment") {
 		t.Errorf("export Content-Disposition = %q, want a download", cd)

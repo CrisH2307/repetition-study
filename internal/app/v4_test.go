@@ -67,6 +67,29 @@ func TestIsolationV4(t *testing.T) {
 	}
 }
 
+// GET /v1/me reports the latest accepted consent version, or null.
+func TestMeReportsConsentVersion(t *testing.T) {
+	e := newEnv(t, &fakes.LLM{Reply: "Why?"}, &fakes.LLM{JSONReply: `{"results":[]}`}, "")
+	a, b := e.newStudent("Ana"), e.newStudent("Bo")
+	var me struct {
+		ConsentVersion *string `json:"consent_version"`
+	}
+	a.call("GET", "/v1/me", "", 200, &me)
+	if me.ConsentVersion != nil {
+		t.Fatalf("before accepting: %v, want null", *me.ConsentVersion)
+	}
+	a.call("POST", "/v1/consent", `{"text_version":"draft-1"}`, 201, nil)
+	a.call("GET", "/v1/me", "", 200, &me)
+	if me.ConsentVersion == nil || *me.ConsentVersion != "draft-1" {
+		t.Errorf("after accepting: %v, want draft-1", me.ConsentVersion)
+	}
+	me.ConsentVersion = nil
+	b.call("GET", "/v1/me", "", 200, &me)
+	if me.ConsentVersion != nil {
+		t.Errorf("Bo sees Ana's consent: %v", *me.ConsentVersion)
+	}
+}
+
 func jobID(rec *httptest.ResponseRecorder) string {
 	s := rec.Body.String()
 	i := strings.Index(s, `"id":"`) + 6

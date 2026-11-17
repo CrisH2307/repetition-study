@@ -3,7 +3,10 @@ import { expect, test } from '@playwright/test'
 // One mock server for the whole file, so the tests run in order and share its state.
 test.describe.configure({ mode: 'serial' })
 // Consent, guide and the weekly question are covered in pilot.mock.ts; skip them here.
-test.beforeEach(({ page }) => page.addInitScript(() => ['consent:u1', 'guide:u1'].forEach((k) => localStorage.setItem(`sr:${k}`, k.startsWith('consent') ? 'draft-1' : '1'))))
+test.beforeEach(async ({ page, request }) => {
+  await request.post('/v1/consent', { data: { text_version: 'draft-1' } })
+  await page.addInitScript(() => localStorage.setItem('sr:guide:u1', '1'))
+})
 
 test('invite link signs in and shows Today', async ({ page }) => {
   await page.goto('/invite#demo')
@@ -106,4 +109,22 @@ test('sign out, then a used link says it does not work', async ({ page }) => {
   await expect(page.getByText('You are signed out.')).toBeVisible()
   await page.goto('/invite#used')
   await expect(page.getByText('This link does not work.')).toBeVisible()
+})
+
+test('share: make, copy, turn off; open a link and import', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+  await page.goto('/invite#demo')
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+  await page.goto('/#/course/00000000-0000-0000-0000-0000000000s1')
+  await page.getByRole('button', { name: 'Make a link' }).click()
+  await page.getByRole('button', { name: 'Copy link' }).click()
+  await expect(page.getByText('Link copied.')).toBeVisible()
+  await page.getByRole('button', { name: 'Turn off link' }).click()
+  await expect(page.getByText('Link turned off.')).toBeVisible()
+  await page.goto('/#/shared/instructor')
+  await expect(page.getByText('Instructor approved')).toBeVisible()
+  await page.getByRole('button', { name: 'Add to my course' }).click()
+  await expect(page.getByRole('heading', { name: 'Needs a quote' })).toBeVisible()
+  await page.goto('/#/shared/gone')
+  await expect(page.getByRole('alert')).toHaveText('This link does not work.')
 })
