@@ -25,6 +25,8 @@ export interface StudyCard { concept_id: string; name: string; recall: number | 
 export interface Mistake { session_id: string; concept_id: string; claim_id: string | null; student_text: string; label: Label; quote: string; source_id: string; page_id: string | null; page: number | null; created_at: string }
 export interface CourseView { course: Subject; notes: Upload[]; cards: StudyCard[]; mistakes: Mistake[] }
 export type SelfRating = 'right' | 'not_sure' | 'wrong'
+export interface FeedbackPrompt { week_start: string; question: string; answer: string | null }
+export interface ImportJob { id: string; subject_id: string; filename: string; status: 'running' | 'done' | 'failed'; rows_total: number; rows_imported: number; row_errors: { row: number; error: string }[]; created_at: string; finished_at: string | null }
 
 /** Fired on any 401 so the app can show the signed-out screen. */
 export const SIGNED_OUT = 'signed-out'
@@ -49,6 +51,12 @@ export async function call<T>(url: string, method = 'GET', body?: unknown): Prom
 export const me = () => call<User>('/v1/me')
 export const redeem = (token: string) => call<User>('/v1/auth/redeem', 'POST', { token })
 export const signOut = () => call<void>('/v1/auth/sign-out', 'POST')
+export const deleteAccount = () => call<void>('/v1/me', 'DELETE', { confirm: 'delete my account' })
+export const acceptConsent = (text_version: string) => call<unknown>('/v1/consent', 'POST', { text_version })
+export const getFeedback = () => call<FeedbackPrompt>('/v1/feedback')
+export const sendFeedback = (answer: string) => call<unknown>('/v1/feedback', 'POST', { answer })
+export const importCsv = (course: string, f: FormData) => call<ImportJob>(`/v1/courses/${course}/import`, 'POST', f)
+export const getImport = (id: string) => call<ImportJob>(`/v1/imports/${id}`)
 export const getToday = () => call<Today>('/v1/today')
 export const getWeek = (monday: string) => call<WeekPlan>(`/v1/week?week=${monday}`)
 export const listCourses = () => call<Subject[]>('/v1/courses')

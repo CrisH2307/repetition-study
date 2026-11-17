@@ -1,11 +1,12 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { App, dueText, mondayOf } from './App'
 import { reasonLine } from './Teach'
 import type { Report } from './api'
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); location.hash = '' })
+beforeEach(() => localStorage.setItem('sr:consent:u', 'draft-1'))
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); location.hash = ''; localStorage.clear() })
 
 const res = (body: unknown, status = 200) => new Response(status === 204 ? null : JSON.stringify(body), { status })
 const today = {
@@ -82,4 +83,15 @@ test('reason line uses the server words, else counts the labels', () => {
   expect(reasonLine(r(['supported'], { reason: 'Sooner: 1 gap' }))).toBe('Sooner: 1 gap')
   expect(reasonLine(r(['supported', 'absent', 'contradicted']))).toBe('2 of 3 points were not right or missing.')
   expect(reasonLine(r(['supported']))).toBe('The point matched the course notes.')
+})
+
+test('consent comes first and is recorded with its version', async () => {
+  localStorage.clear()
+  const fetchMock = vi.fn(async (url: string) => res(url.includes('/me') ? { id: 'u', name: 'D', time_zone: 'UTC' } : url.includes('/consent') ? { text_version: 'draft-1', accepted_at: '' } : today))
+  vi.stubGlobal('fetch', fetchMock)
+  render(<App />)
+  await userEvent.click(await screen.findByRole('button', { name: 'I agree' }))
+  await screen.findByText('Due today')
+  const sent = fetchMock.mock.calls.find(([url]) => url.endsWith('/consent')) as unknown as [string, RequestInit]
+  expect(JSON.parse(sent[1].body as string)).toEqual({ text_version: 'draft-1' })
 })

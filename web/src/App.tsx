@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { SIGNED_OUT, Today, TodayItem, User, WeekPlan, getToday, getWeek, me, redeem, signOut, startSession } from './api'
 import { Session, TeachFlow } from './Teach'
 import { Course, Courses, PageCheck } from './Course'
+import { CONSENT_VERSION, Consent, FeedbackCard, Guide, Settings, flag } from './Pilot'
 
 const dayWord = { weekday: 'short', month: 'short', day: 'numeric' } as const
 const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString()
@@ -25,9 +26,10 @@ const route = () => location.hash.slice(2).split('/') // "#/course/abc" -> ["cou
 export type Start = (concept_id: string, name: string) => Promise<void>
 
 export function App() {
-  const [user, setUser] = useState<User | null | 'out' | 'bad-link' | 'down'>(null)
+  const [user, setUser] = useState<User | null | 'out' | 'bad-link' | 'down' | 'deleted'>(null)
   const [path, setPath] = useState(route)
   const [session, setSession] = useState<Session | null>(null)
+  const [, agreed] = useState(0)
   useEffect(() => {
     const out = () => setUser('out')
     const nav = () => setPath(route())
@@ -43,18 +45,22 @@ export function App() {
 
   if (user === null) return <main><p className="loading">Loading...</p></main>
   if (user === 'down') return <main><div className="error" role="alert">We could not reach the server. Please check your connection and refresh the page.</div></main>
-  if (user === 'out' || user === 'bad-link') {
+  if (user === 'out' || user === 'bad-link' || user === 'deleted') {
     return (
       <main>
         <h1>Space Repetition</h1>
         <div className="card" role="status">
-          {user === 'bad-link'
+          {user === 'deleted' ? <p><strong>Your account was deleted.</strong></p>
+            : user === 'bad-link'
             ? <p><strong>This link does not work.</strong> It may have been used already. Please ask the person who sent it for a new one.</p>
             : <p><strong>You are signed out.</strong> To sign in, open the invite link you were sent.</p>}
         </div>
       </main>
     )
   }
+
+  const out = () => signOut().finally(() => setUser('out'))
+  if (flag.get(`consent:${user.id}`) !== CONSENT_VERSION) return <Consent user={user} onDone={() => agreed((n) => n + 1)} onSignOut={out} />
 
   const start: Start = async (concept_id, name) => setSession({ id: (await startSession(concept_id)).id, concept_id, name })
   if (session) {
@@ -67,7 +73,8 @@ export function App() {
         <a href="#/" aria-current={!page || undefined}>Today</a>
         <a href="#/courses" aria-current={['courses', 'course', 'upload', 'page'].includes(page) || undefined}>Courses</a>
         <a href="#/week" aria-current={page === 'week' || undefined}>Week</a>
-        <button className="plain" onClick={() => signOut().finally(() => setUser('out'))}>Sign out</button>
+        <a href="#/settings" aria-current={page === 'settings' || undefined}>Settings</a>
+        <button className="plain" onClick={out}>Sign out</button>
       </nav>
       <main>
         {page === 'week' ? <Week />
@@ -75,7 +82,8 @@ export function App() {
           : page === 'course' ? <Course id={id} start={start} />
           : page === 'upload' ? <PageCheck uploadId={id} />
           : page === 'page' ? <PageCheck pageId={id} />
-          : <TodayView start={start} />}
+          : page === 'settings' ? <Settings onDeleted={() => { location.hash = ''; setUser('deleted') }} />
+          : <TodayView start={start} user={user} />}
       </main>
     </>
   )
@@ -109,7 +117,7 @@ function HoursBox({ rows, title }: { rows: { subject_id: string; name: string; h
   )
 }
 
-function TodayView({ start }: { start: Start }) {
+function TodayView({ start, user }: { start: Start; user: User }) {
   const [t, setT] = useState<Today | null>(null)
   const [err, setErr] = useState('')
   useEffect(() => { getToday().then(setT, () => setErr('We could not load today. Please check your connection and refresh the page.')) }, [])
@@ -118,9 +126,11 @@ function TodayView({ start }: { start: Start }) {
   return (
     <>
       <h1>{new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</h1>
+      <Guide user={user} />
+      <FeedbackCard />
       <div className="split">
         <div>
-          {t.courses.length === 0 && <p>Nothing to study today. Add a course and its notes under Courses.</p>}
+          {t.courses.length === 0 && <p>Nothing to study today. <a href="#/courses">Add a course</a></p>}
           {t.courses.map((c) => (
             <details key={c.subject_id} className="folder" open>
               <summary>{c.name} <small>{c.minutes} min</small></summary>
