@@ -48,6 +48,9 @@ type Deps struct {
 	Privacy  domain.PrivacyStore
 	Imports  domain.ImportStore
 	Importer domain.Importer
+
+	// Contract v5. Optional: nil leaves the share routes unserved.
+	Sharing domain.Sharing
 }
 
 // Owner answers "is this Phase 0 id the user's?" with domain.ErrNotFound for no.
@@ -142,6 +145,7 @@ func NewHandler(d Deps) http.Handler {
 	}
 	a.routesV3(mux)
 	a.routesV4(mux)
+	a.routesV5(mux)
 	ah := auth.HTTP{Auth: d.Auth, Secure: d.SecureCookie}
 	top := http.NewServeMux()
 	top.HandleFunc("GET /healthz", health)
