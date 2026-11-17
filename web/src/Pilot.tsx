@@ -11,14 +11,12 @@ export const flag = {
 
 const msg = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong. Please try again.')
 
-// ponytail: the API has no "did this user accept" read, so the browser remembers it.
-// A new browser asks again; accepting again is harmless (the server keeps the first time).
 export function Consent({ user, onDone, onSignOut }: { user: User; onDone: () => void; onSignOut: () => void }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const agree = async () => {
     setBusy(true); setErr('')
-    try { await acceptConsent(CONSENT_VERSION); flag.set(`consent:${user.id}`, CONSENT_VERSION); onDone() }
+    try { await acceptConsent(CONSENT_VERSION); onDone() }
     catch (e) { setErr(msg(e)); setBusy(false) }
   }
   return (

@@ -52,7 +52,22 @@ func nz[T any](s []T) []T {
 
 func (a *api) me(w http.ResponseWriter, r *http.Request) {
 	u, _ := authUser(r)
-	writeJSON(w, 200, u)
+	// Latest accepted consent version (D44), or null. Consents come back oldest first.
+	var ver *string
+	if a.Feedback != nil {
+		cs, err := a.Feedback.Consents(r.Context(), u.ID)
+		if err != nil {
+			a.fail(w, r, err)
+			return
+		}
+		if n := len(cs); n > 0 {
+			ver = &cs[n-1].TextVersion
+		}
+	}
+	writeJSON(w, 200, struct {
+		domain.User
+		ConsentVersion *string `json:"consent_version"`
+	}{u, ver})
 }
 
 func (a *api) getCourse(w http.ResponseWriter, r *http.Request) {

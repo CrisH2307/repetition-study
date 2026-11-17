@@ -8,6 +8,8 @@ A student explains a concept in a derivation-heavy course, typing LaTeX. An AI s
 
 ## Where we are
 
+Phase 1 and Phase 2 shipped to `main` in release #139 and are deployed: the web app on Vercel and the API on Fly.io Toronto. Phase 3 (billing, sharing, landing site) waits for gate G2 and Cris. Dino's test of the live site is #138. The notes below are the Phase 0 history.
+
 Built and merged into `qa`: contract v2, citation verification (`internal/cite`), Postgres store, scheduler fixes, planner time zones, a vendor-neutral LLM layer with metering and a spend cap, the outage state (`unchecked`, no schedule change), the API handlers, a typed teach page in `web/`, never-taught concepts counting as due, a `fake-down` checker switch, `cmd/evalcheck` running all 8 gate suites, and frozen human labels (Dino and a classmate, kappa 0.964, 2 settled).
 
 Left: real model runs (the live check of the LLM layer, then P0-GATE, #23; steps in `docs/GATE.md`), Dino's page testing (#26, `docs/TESTING.md`), and the UI design (#51). Gate run 1 is recorded in `eval/results/gate-2026-11-15-run1.md`. Gate run 2 (2026-11-16, test split, after D23, D24, a JSON retry and an AI student prompt fix): 6 of 8 rows pass. After the person review in #67 (13 of 13 quotes relevant, l05 not a leak), all 8 rows meet their bar: gate G0 is met on GPT 6 Luna. Report: `eval/results/gate-2026-11-16-run2.md`.

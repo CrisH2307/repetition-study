@@ -10,7 +10,7 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -o /out/ ./cmd/api ./cmd/migrate ./cmd/seed
+RUN CGO_ENABLED=0 go build -o /out/ ./cmd/api ./cmd/migrate ./cmd/seed ./cmd/invite ./cmd/export
 
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends poppler-utils ca-certificates \

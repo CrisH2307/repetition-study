@@ -22,7 +22,7 @@ test('consent comes before first use, then the guide and the weekly question', a
   await q.getByRole('button', { name: 'Send' }).click()
   await expect(page.getByText('Thanks for your answer.')).toBeVisible()
 
-  await page.reload() // remembered in this browser: no consent, guide or question again
+  await page.reload() // remembered by the server and this browser: no consent, guide or question again
   await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible()
   await expect(page.getByRole('region', { name: 'First steps' })).toHaveCount(0)
   await expect(page.getByRole('form', { name: 'Weekly question' })).toHaveCount(0)
@@ -30,7 +30,6 @@ test('consent comes before first use, then the guide and the weekly question', a
 
 test('a new course shows empty states with one next action', async ({ page }) => {
   await page.goto('/invite#demo')
-  await page.getByRole('button', { name: 'I agree' }).click()
   await page.getByRole('link', { name: 'Courses' }).first().click()
   await page.getByLabel('Course name').fill('Empty course')
   await page.getByRole('button', { name: 'Add course' }).click()
@@ -41,7 +40,6 @@ test('a new course shows empty states with one next action', async ({ page }) =>
 
 test('CSV import shows per-row results', async ({ page }) => {
   await page.goto('/invite#demo')
-  await page.getByRole('button', { name: 'I agree' }).click()
   await page.getByRole('link', { name: 'Courses' }).first().click()
   await page.getByRole('link', { name: 'Empty course' }).click() // its own course, so screens.mock.ts sees the fixture course unchanged
   // A Ready page to quote from
@@ -64,7 +62,6 @@ test('CSV import shows per-row results', async ({ page }) => {
 
 test('download my data gives one JSON file', async ({ page }) => {
   await page.goto('/invite#demo')
-  await page.getByRole('button', { name: 'I agree' }).click()
   await page.getByRole('link', { name: 'Settings' }).click()
   const [file] = await Promise.all([page.waitForEvent('download'), page.getByRole('link', { name: 'Download my data' }).click()])
   const data = JSON.parse(readFileSync((await file.path())!, 'utf8'))
@@ -74,7 +71,6 @@ test('download my data gives one JSON file', async ({ page }) => {
 
 test('delete my account needs the typed words, then signs out', async ({ page }) => {
   await page.goto('/invite#demo')
-  await page.getByRole('button', { name: 'I agree' }).click()
   await page.getByRole('link', { name: 'Settings' }).click()
   const form = page.getByRole('form', { name: 'Delete my account' })
   const del = form.getByRole('button', { name: 'Delete my account' })

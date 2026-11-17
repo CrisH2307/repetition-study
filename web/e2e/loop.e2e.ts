@@ -34,10 +34,9 @@ const api = <T>(page: Page, method: string, path: string, body?: unknown, form?:
 async function signInWithCourse(page: Page, base: string) {
   const out = execSync(`go run ./cmd/invite -name "e2e ${Date.now()}"`, { cwd: '..', env: { ...process.env, DATABASE_URL: db, APP_URL: base } }).toString()
   await page.goto(`${base}/invite#${out.trim().split('#')[1]}`)
-  // Consent is tested in pilot.mock.ts. Mark it accepted in this browser so the loop runs on any API version.
+  // Consent is tested in pilot.mock.ts. Accept it through the API so the loop runs.
   await expect(page.getByRole('button', { name: 'I agree' })).toBeVisible()
-  const me = await api<{ id: string }>(page, 'GET', '/v1/me')
-  await page.evaluate((id) => localStorage.setItem(`sr:consent:${id}`, 'draft-1'), me.id)
+  await api(page, 'POST', '/v1/consent', { text_version: 'draft-1' })
   const course = await api<{ id: string }>(page, 'POST', '/v1/courses', { name: 'Probability', weekly_hours: 3, level: 'intermediate' })
   const up = await api<{ id: string }>(page, 'POST', `/v1/courses/${course.id}/uploads`, undefined, { filename: 'notes.txt', text: unit.sources[0].text })
   await expect.poll(async () => (await api<{ status: string }>(page, 'GET', `/v1/uploads/${up.id}`)).status).toBe('needs_checking')

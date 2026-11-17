@@ -128,7 +128,7 @@ export function mockApi(): Plugin {
           const j = imports.find((x) => x.id === seg[1])
           return j ? json(200, j) : say(404, 'We could not find that import.')
         }
-        if (url === '/me') return json(200, { id: 'u1', name: 'Dino', time_zone: 'America/Toronto' })
+        if (url === '/me') return json(200, { id: 'u1', name: 'Dino', time_zone: 'America/Toronto', consent_version: consents.at(-1)?.text_version ?? null })
 
         if (url === '/today') {
           return json(200, {
