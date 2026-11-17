@@ -7,10 +7,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
 
@@ -20,21 +22,73 @@ import (
 
 type memSubjects struct{ list []domain.Subject }
 
-func (m *memSubjects) List(context.Context) ([]domain.Subject, error) { return m.list, nil }
-func (m *memSubjects) Create(_ context.Context, s domain.Subject) (domain.Subject, error) {
+func (m *memSubjects) List(context.Context, string) ([]domain.Subject, error) { return m.list, nil }
+func (m *memSubjects) Create(_ context.Context, _ string, s domain.Subject) (domain.Subject, error) {
 	s.ID = "sub-1"
 	m.list = append(m.list, s)
 	return s, nil
 }
 
-func fakeHandler() http.Handler {
-	clock := fakes.NewClock()
-	eng := &fakes.TeachEngine{}
-	return NewHandler(Deps{
-		Teach: eng, Sched: &fakes.Scheduler{Clock: clock}, Planner: fakes.Planner{},
-		Subjects: &memSubjects{}, Clock: clock,
-	})
+// allowAll is an Owner that says yes: the fake teach engine and scheduler know no users.
+type allowAll struct{}
+
+func (allowAll) Concept(context.Context, string, string) error { return nil }
+func (allowAll) Card(context.Context, string, string) error    { return nil }
+func (allowAll) ConceptIDs(context.Context, string) (map[string]bool, error) {
+	return map[string]bool{"concept-1": true}, nil
 }
+
+// signedIn adds the session cookie to requests that carry none.
+type signedIn struct {
+	http.Handler
+	token string
+}
+
+func (s signedIn) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if _, err := r.Cookie("session"); err != nil && s.token != "" {
+		r.AddCookie(&http.Cookie{Name: "session", Value: s.token})
+	}
+	s.Handler.ServeHTTP(w, r)
+}
+
+// fakeStack is the whole API over the in-memory fakes, with one signed-in user.
+type fakeStack struct {
+	h       http.Handler
+	raw     http.Handler // no cookie added
+	auth    *fakes.Auth
+	reviews *fakes.ReviewStore
+	user    domain.User
+	token   string
+}
+
+func newFake() *fakeStack {
+	clock := fakes.NewClock()
+	auth := &fakes.Auth{Clock: clock}
+	courses := &fakes.CourseStore{}
+	reviews := &fakes.ReviewStore{Sessions: map[string]string{}}
+	raw := NewHandler(Deps{
+		Teach: &fakes.TeachEngine{}, Sched: &fakes.Scheduler{Clock: clock}, Planner: fakes.Planner{},
+		Subjects: courseSubjects{courses}, Clock: clock,
+		Auth: auth, Course: courses, Reviews: reviews, Notes: fakes.CourseNotes{Store: courses},
+		Today: fakes.TodayPlanner{}, Own: allowAll{},
+	})
+	st := &fakeStack{raw: raw, auth: auth, reviews: reviews}
+	st.user, st.token = st.signIn("Ana")
+	st.h = signedIn{raw, st.token}
+	return st
+}
+
+// signIn makes a new user and returns their session token.
+func (f *fakeStack) signIn(name string) (domain.User, string) {
+	inv, _ := f.auth.NewInvite(context.Background(), name)
+	u, tok, _, err := f.auth.Redeem(context.Background(), inv)
+	if err != nil {
+		panic(err)
+	}
+	return u, tok
+}
+
+func fakeHandler() http.Handler { return newFake().h }
 
 // notServed lists spec operations Phase 0 does not serve (P0-INT skips digest and plan editing).
 var notServed = map[string]bool{
@@ -73,6 +127,35 @@ func check(t *testing.T, doc *openapi3.T, method, path string, status int, body 
 	}
 }
 
+// upload posts a pasted-text upload as the web app does.
+func upload(h http.Handler, path, name, text string) *httptest.ResponseRecorder {
+	var b bytes.Buffer
+	mw := multipart.NewWriter(&b)
+	mw.WriteField("filename", name)
+	mw.WriteField("text", text)
+	mw.Close()
+	req := httptest.NewRequest("POST", path, &b)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
+// waitUpload polls until the background read has set the status.
+func waitUpload(t *testing.T, h http.Handler, id string, want domain.UploadStatus) domain.Upload {
+	t.Helper()
+	var u domain.Upload
+	for i := 0; i < 200; i++ {
+		json.Unmarshal(do(h, "GET", "/v1/uploads/"+id, "").Body.Bytes(), &u)
+		if u.Status == want {
+			return u
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	t.Fatalf("upload %s is %q, want %q", id, u.Status, want)
+	return u
+}
+
 func do(h http.Handler, method, path, body string) *httptest.ResponseRecorder {
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(method, path, strings.NewReader(body)))
@@ -81,7 +164,8 @@ func do(h http.Handler, method, path, body string) *httptest.ResponseRecorder {
 
 func TestHandlersMatchOpenAPI(t *testing.T) {
 	doc := loadSpec(t)
-	h := fakeHandler()
+	st := newFake()
+	h := st.h
 	served := map[string]bool{}
 	call := func(method, tmpl, path, body string, want int) []byte {
 		t.Helper()
@@ -90,7 +174,9 @@ func TestHandlersMatchOpenAPI(t *testing.T) {
 		if rec.Code != want {
 			t.Fatalf("%s %s: got %d, want %d: %s", method, path, rec.Code, want, rec.Body)
 		}
-		check(t, doc, method, tmpl, want, rec.Body.Bytes())
+		if rec.Body.Len() > 0 { // 204 has no body
+			check(t, doc, method, tmpl, want, rec.Body.Bytes())
+		}
 		return rec.Body.Bytes()
 	}
 
@@ -102,6 +188,7 @@ func TestHandlersMatchOpenAPI(t *testing.T) {
 
 	var ts domain.TeachSession
 	json.Unmarshal(call("POST", "/v1/teach/sessions", "/v1/teach/sessions", `{"concept_id":"concept-1"}`, 201), &ts)
+	st.reviews.Sessions[ts.ID] = st.user.ID
 	sid := "/v1/teach/sessions/" + ts.ID
 
 	// SSE: token events, then done.
@@ -134,10 +221,76 @@ func TestHandlersMatchOpenAPI(t *testing.T) {
 	call("POST", "/v1/cards/{id}/review", "/v1/cards/card-1/review", `{"grade":"good"}`, 200)
 	call("POST", "/v1/concepts/{id}/override", "/v1/concepts/concept-1/override", `{"due_at":"2026-12-01T00:00:00Z","reason":"exam moved"}`, 200)
 
+	// Contract v3: the whole course loop over the fakes.
+	call("GET", "/v1/me", "/v1/me", "", 200)
+	var course domain.Subject
+	json.Unmarshal(call("POST", "/v1/courses", "/v1/courses", `{"name":"Stats","weekly_hours":3,"level":"beginner"}`, 201), &course)
+	cp := "/v1/courses/" + course.ID
+	call("GET", "/v1/courses", "/v1/courses", "", 200)
+	call("GET", "/v1/courses/{id}", cp, "", 200)
+	call("PATCH", "/v1/courses/{id}", cp, `{"name":"Statistics","weekly_hours":4,"level":"intermediate","exam_date":"2026-12-15"}`, 200)
+	var concept domain.Concept
+	json.Unmarshal(call("POST", "/v1/courses/{id}/concepts", cp+"/concepts", `{"name":"Mean"}`, 201), &concept)
+
+	var up domain.Upload
+	rec = upload(h, cp+"/uploads", "notes.txt", "The mean is the sum divided by the count.")
+	if rec.Code != 202 {
+		t.Fatalf("upload: %d %s", rec.Code, rec.Body)
+	}
+	served["POST /v1/courses/{id}/uploads"] = true
+	check(t, doc, "POST", "/v1/courses/{id}/uploads", 202, rec.Body.Bytes())
+	json.Unmarshal(rec.Body.Bytes(), &up)
+	call("GET", "/v1/courses/{id}/uploads", cp+"/uploads", "", 200)
+	waitUpload(t, h, up.ID, domain.UploadNeedsChecking)
+	call("GET", "/v1/uploads/{id}", "/v1/uploads/"+up.ID, "", 200)
+	var pages []domain.Page
+	json.Unmarshal(call("GET", "/v1/uploads/{id}/pages", "/v1/uploads/"+up.ID+"/pages", "", 200), &pages)
+	pp := "/v1/pages/" + pages[0].ID
+	call("GET", "/v1/pages/{id}", pp, "", 200)
+	call("PATCH", "/v1/pages/{id}", pp, `{"edited_text":"The mean is the sum divided by the count."}`, 200)
+	call("POST", "/v1/pages/{id}/ready", pp+"/ready", "", 200)
+	var blocks []domain.SourceBlock
+	json.Unmarshal(call("GET", "/v1/courses/{id}/blocks", cp+"/blocks", "", 200), &blocks)
+	claimBody := fmt.Sprintf(`{"text":"The mean is sum over count","kind":"definition","required":true,"anchor":{"block_id":%q,"quote":"the sum divided by the count"}}`, blocks[0].ID)
+	var claim domain.Claim
+	json.Unmarshal(call("POST", "/v1/concepts/{id}/claims", "/v1/concepts/"+concept.ID+"/claims", claimBody, 201), &claim)
+	call("GET", "/v1/concepts/{id}/claims", "/v1/concepts/"+concept.ID+"/claims", "", 200)
+	call("PATCH", "/v1/claims/{id}", "/v1/claims/"+claim.ID, claimBody, 200)
+	call("POST", "/v1/concepts/{id}/claims", "/v1/concepts/"+concept.ID+"/claims",
+		fmt.Sprintf(`{"text":"x","kind":"definition","required":true,"anchor":{"block_id":%q,"quote":"not in the notes"}}`, blocks[0].ID), 400)
+	call("DELETE", "/v1/claims/{id}", "/v1/claims/"+claim.ID, "", 204)
+	call("POST", "/v1/pages/{id}/unready", pp+"/unready", "", 200)
+	served["GET /v1/pages/{id}/image"] = true
+	if rec := do(h, "GET", pp+"/image", ""); rec.Code != 404 { // the fake page has no picture
+		t.Errorf("image of a page without one: %d", rec.Code)
+	}
+	st.reviews.Views = map[string]map[string]domain.CourseView{st.user.ID: {course.ID: {Course: course}}}
+	call("GET", "/v1/courses/{id}/view", cp+"/view", "", 200)
+	call("POST", "/v1/teach/sessions/{id}/self-grades", sid+"/self-grades", `{"grades":[{"claim_id":"c1","rating":"right"}]}`, 204)
+	call("POST", "/v1/teach/sessions/{id}/self-grades", sid+"/self-grades", `{"grades":[{"claim_id":"c1","rating":"great"}]}`, 400)
+	call("POST", "/v1/teach/sessions/{id}/disputes", sid+"/disputes", `{"claim_id":null,"note":"I think this is wrong"}`, 201)
+	call("GET", "/v1/today", "/v1/today", "", 200)
+	call("GET", "/v1/week", "/v1/week?week=2026-11-09", "", 200)
+	call("GET", "/v1/week", "/v1/week?week=soon", "", 400)
+	call("DELETE", "/v1/courses/{id}", cp, "", 204)
+	call("GET", "/v1/courses/{id}", cp, "", 404)
+
 	// Errors use {"error": "..."} and the statuses the spec names.
 	call("POST", "/v1/subjects", "/v1/subjects", `{"name":"","weekly_hours":4,"level":"beginner"}`, 400)
 	call("POST", "/v1/teach/sessions/{id}/finish", "/v1/teach/sessions/nope/finish", "", 404)
 	call("GET", "/v1/teach/sessions/{id}/report", "/v1/teach/sessions/nope/report", "", 404)
+
+	// Sign-out ends the session; redeem and healthz are the only open routes.
+	call("POST", "/v1/auth/sign-out", "/v1/auth/sign-out", "", 204)
+	call("GET", "/v1/me", "/v1/me", "", 401)
+	call("GET", "/healthz", "/healthz", "", 200)
+	inv, _ := st.auth.NewInvite(context.Background(), "Bo")
+	rec = do(h, "POST", "/v1/auth/redeem", fmt.Sprintf(`{"token":%q}`, inv))
+	served["POST /v1/auth/redeem"] = true
+	if rec.Code != 200 || rec.Result().Cookies()[0].Name != "session" {
+		t.Fatalf("redeem: %d %s", rec.Code, rec.Body)
+	}
+	check(t, doc, "POST", "/v1/auth/redeem", 200, rec.Body.Bytes())
 
 	// Every operation in the spec is either served or on the known skip list.
 	for path, item := range doc.Paths.Map() {
@@ -161,7 +314,9 @@ func TestHandlersMatchOpenAPI(t *testing.T) {
 }
 
 func TestBadInput(t *testing.T) {
-	h := fakeHandler()
+	st := newFake()
+	h := st.h
+	st.reviews.Sessions["x"] = st.user.ID
 	for _, c := range []struct{ method, path, body string }{
 		{"POST", "/v1/teach/sessions", `{}`},
 		{"POST", "/v1/teach/sessions", `not json`},

@@ -194,5 +194,162 @@
       "docs/DECISIONS.md",
       "rpi/P0-OPENROUTER/"
     ]
+  },
+  "P1-CONTRACT": {
+    "branch": "feature/contract-v3",
+    "allow": [
+      "internal/domain/",
+      "api/",
+      "migrations/",
+      "internal/fakes/",
+      "rpi/P1-CONTRACT/"
+    ]
+  },
+  "P1-E2E": {
+    "branch": "feature/e2e-loop",
+    "allow": [
+      "web/package.json",
+      "web/package-lock.json",
+      "web/playwright.config.ts",
+      "web/e2e/",
+      ".github/workflows/",
+      "rpi/P1-E2E/"
+    ]
+  },
+  "P1-IMAGE": {
+    "branch": "chore/docker-image",
+    "allow": [
+      "Dockerfile",
+      ".dockerignore",
+      "compose.yaml",
+      "cmd/api/",
+      "docs/DEPLOY.md",
+      "rpi/P1-IMAGE/"
+    ]
+  },
+  "P1-STORE": {
+    "branch": "feature/pg-store-v3",
+    "allow": [
+      "internal/store/",
+      "rpi/P1-STORE/"
+    ]
+  },
+  "P1-COURSE": {
+    "branch": "feature/course-notes",
+    "allow": [
+      "internal/course/",
+      "rpi/P1-COURSE/"
+    ]
+  },
+  "P1-AUTH": {
+    "branch": "feature/invite-auth",
+    "allow": [
+      "internal/auth/",
+      "cmd/invite/",
+      "rpi/P1-AUTH/"
+    ]
+  },
+  "P1-TODAY": {
+    "branch": "feature/today-queue",
+    "allow": [
+      "internal/planner/",
+      "rpi/P1-TODAY/"
+    ]
+  },
+  "P1-API": {
+    "branch": "feature/api-v3",
+    "allow": [
+      "internal/app/",
+      "cmd/api/",
+      "cmd/export/",
+      "Makefile",
+      "go.mod",
+      "go.sum",
+      "rpi/P1-API/"
+    ]
+  },
+  "P1-WEB": {
+    "branch": "feature/web-app",
+    "allow": [
+      "web/",
+      "rpi/P1-WEB/"
+    ]
+  },
+  "P1-DEPLOY": {
+    "branch": "chore/deploy",
+    "allow": [
+      "vercel.json",
+      "deploy/",
+      "docs/DEPLOY.md",
+      ".github/workflows/",
+      "rpi/P1-DEPLOY/"
+    ]
+  },
+  "P2-CONTRACT": {
+    "branch": "feature/contract-v4",
+    "allow": [
+      "internal/domain/",
+      "api/",
+      "migrations/",
+      "internal/fakes/",
+      "internal/app/handlers_test.go",
+      "rpi/P2-CONTRACT/"
+    ]
+  },
+  "P2-METRICS": {
+    "branch": "feature/metrics-export",
+    "allow": [
+      "internal/metrics/",
+      "cmd/export/",
+      "rpi/P2-METRICS/"
+    ]
+  },
+  "P2-PRIVACY": {
+    "branch": "feature/privacy-export",
+    "allow": [
+      "internal/privacy/",
+      "internal/store/privacy.go",
+      "internal/store/privacy_test.go",
+      "rpi/P2-PRIVACY/"
+    ]
+  },
+  "P2-IMPORT": {
+    "branch": "feature/csv-import",
+    "allow": [
+      "internal/importer/",
+      "rpi/P2-IMPORT/"
+    ]
+  },
+  "P2-EVAL2": {
+    "branch": "feature/eval-from-disputes",
+    "allow": [
+      "eval/",
+      "cmd/evalcheck/",
+      "scripts/disputes_to_eval.py",
+      "rpi/P2-EVAL2/"
+    ]
+  },
+  "P2-WEB2": {
+    "branch": "feature/web-pilot",
+    "allow": [
+      "web/",
+      "rpi/P2-WEB2/"
+    ]
+  },
+  "P2-API": {
+    "branch": "feature/api-v4",
+    "allow": [
+      "internal/app/",
+      "cmd/api/",
+      "cmd/export/",
+      "rpi/P2-API/"
+    ]
+  },
+  "P1-POLISH": {
+    "branch": "feature/ui-polish",
+    "allow": [
+      "web/",
+      "rpi/P1-POLISH/"
+    ]
   }
 }

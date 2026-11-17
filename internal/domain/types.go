@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// DemoUserID is the single seeded user. There is no auth today.
+// DemoUserID is the seeded Phase 0 user. Phase 0 rows stay with it (D29).
 const DemoUserID = "00000000-0000-0000-0000-000000000001"
 
 type ClaimLabel string
@@ -125,6 +125,10 @@ type Claim struct {
 	SourceID  string `json:"source_id"`
 	Locator   string `json:"locator"`
 	Required  bool   `json:"required"`
+	// v3 claim checklist (D28). Nil on Phase 0 claims.
+	Kind         *ClaimKind `json:"kind,omitempty"`
+	AuthorUserID *string    `json:"author_user_id,omitempty"`
+	Anchor       *Anchor    `json:"anchor,omitempty"`
 }
 
 // TaughtClaim is what the human said, in their own words. It is the only

@@ -153,11 +153,11 @@ func (s *Store) LoadPack(ctx context.Context, p domain.Pack) error {
 			return fmt.Errorf("subject: %w", err)
 		}
 		for _, x := range p.Sources {
-			if err := ex(`INSERT INTO sources (id, kind, title, url, publisher, license, reviewed_by, reviewed_at, text)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			if err := ex(`INSERT INTO sources (id, kind, title, url, publisher, license, reviewed_by, reviewed_at, text, subject_id)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 				ON CONFLICT (id) DO UPDATE SET kind = $2, title = $3, url = $4, publisher = $5, license = $6,
-					reviewed_by = $7, reviewed_at = $8, text = $9`,
-				x.ID, x.Kind, x.Title, x.URL, x.Publisher, x.License, x.ReviewedBy, x.ReviewedAt, x.Text); err != nil {
+					reviewed_by = $7, reviewed_at = $8, text = $9, subject_id = $10`,
+				x.ID, x.Kind, x.Title, x.URL, x.Publisher, x.License, x.ReviewedBy, x.ReviewedAt, x.Text, sub.ID); err != nil {
 				return fmt.Errorf("source %q: %w", x.ID, err)
 			}
 		}

@@ -3,6 +3,7 @@ package app
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -102,7 +103,12 @@ func newEnv(t *testing.T, student, checkerLLM domain.LLM, checkerModel string) *
 	}
 	clock := fakes.NewClock()
 	d := Wire(pool, student, checkerLLM, checkerModel, clock, nil)
-	return &env{t: t, pool: pool, d: d, h: NewHandler(d), clock: clock, pack: pack}
+	// The fixture belongs to the seeded demo user, so the Phase 0 loop signs in as them.
+	sum := sha256.Sum256([]byte("demo-session"))
+	if err := store.New(pool).CreateSession(ctx, domain.DemoUserID, sum[:], time.Now().AddDate(2, 0, 0)); err != nil {
+		t.Fatal(err)
+	}
+	return &env{t: t, pool: pool, d: d, h: signedIn{NewHandler(d), "demo-session"}, clock: clock, pack: pack}
 }
 
 func (e *env) call(method, path, body string, want int, out any) {
