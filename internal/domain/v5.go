@@ -2,86 +2,11 @@ package domain
 
 import (
 	"context"
-	"errors"
 	"time"
 )
 
-// Contract v5 (Phase 3, D49 to D51). Billing in test mode and claim-only
-// pack sharing with instructor packs. Both stay off until Cris turns them on.
-
-// Billing (D49).
-
-type PlanName string
-
-const (
-	PlanMonth PlanName = "month"
-	PlanTerm  PlanName = "term" // one-time payment, no subscription
-)
-
-type EntitlementStatus string
-
-const (
-	EntitlementActive   EntitlementStatus = "active"
-	EntitlementPastDue  EntitlementStatus = "past_due"
-	EntitlementCanceled EntitlementStatus = "canceled"
-)
-
-// Entitlement is the one row per user that says what they paid for. Provider
-// ids are internal and never sent to the browser.
-type Entitlement struct {
-	Plan           PlanName          `json:"plan"`
-	Status         EntitlementStatus `json:"status"`
-	PeriodEnd      time.Time         `json:"period_end"`
-	CustomerID     string            `json:"-"`
-	SubscriptionID *string           `json:"-"` // set for month, nil for term
-}
-
-// BillingStatus is GET /v1/billing. Enabled is false while BILLING_ENABLED is
-// off; then Entitled is always true and Plan is nil.
-type BillingStatus struct {
-	Enabled   bool               `json:"enabled"`
-	Entitled  bool               `json:"entitled"`
-	Plan      *PlanName          `json:"plan"`
-	Status    *EntitlementStatus `json:"status"`
-	PeriodEnd *time.Time         `json:"period_end"`
-}
-
-// BillingEvent is one verified webhook event as received.
-type BillingEvent struct {
-	EventID    string
-	Type       string
-	ReceivedAt time.Time
-	Payload    []byte // raw JSON object
-}
-
-// ErrBadSignature means the webhook signature header is missing, wrong or too
-// old. The handler answers 400 and changes nothing.
-var ErrBadSignature = errors.New("bad webhook signature")
-
-// BillingStore persists entitlements and webhook events. P3-BILLING implements it.
-type BillingStore interface {
-	// Entitlement returns ErrNotFound when the user never paid.
-	Entitlement(ctx context.Context, userID string) (Entitlement, error)
-	// UserByCustomer maps a provider customer id to the user, ErrNotFound if none.
-	UserByCustomer(ctx context.Context, customerID string) (string, error)
-	// ApplyEvent records ev and, when e is not nil, upserts the user's
-	// entitlement, in one transaction. applied is false, and nothing changes,
-	// when ev.EventID was seen before.
-	ApplyEvent(ctx context.Context, ev BillingEvent, userID string, e *Entitlement) (applied bool, err error)
-}
-
-// Billing is Stripe Checkout and webhooks over net/http (D49). P3-BILLING implements it.
-type Billing interface {
-	Status(ctx context.Context, userID string) (BillingStatus, error)
-	// CheckoutURL returns the hosted Checkout page for the plan. A UserError
-	// while billing is off.
-	CheckoutURL(ctx context.Context, userID string, plan PlanName) (string, error)
-	// HandleWebhook verifies signature over the raw body, then applies the
-	// event once. ErrBadSignature when verification fails.
-	HandleWebhook(ctx context.Context, body []byte, signature string) error
-	// Entitled is always true while billing is off.
-	Entitled(ctx context.Context, userID string) (bool, error)
-}
+// Contract v5 (Phase 3, D50, D51). Claim-only pack sharing with instructor
+// packs. Billing (D49) is deferred by Cris.
 
 // Sharing (D50, D51).
 

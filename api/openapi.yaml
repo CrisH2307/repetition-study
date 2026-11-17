@@ -248,36 +248,6 @@ paths:
       responses:
         "200": {description: Import, content: {application/json: {schema: {$ref: "#/components/schemas/ImportJob"}}}}
         "404": {$ref: "#/components/responses/Error"}
-  /v1/billing:
-    get:
-      summary: My plan (D49). While billing is off, enabled is false and entitled is true.
-      responses:
-        "200": {description: Billing status, content: {application/json: {schema: {$ref: "#/components/schemas/BillingStatus"}}}}
-        "401": {$ref: "#/components/responses/Error"}
-  /v1/billing/checkout:
-    post:
-      summary: Start a Checkout for a plan and get the page to send the browser to (D49)
-      description: 400 while billing is off.
-      requestBody:
-        required: true
-        content: {application/json: {schema: {type: object, required: [plan], properties: {plan: {$ref: "#/components/schemas/PlanName"}}}}}
-      responses:
-        "200": {description: Checkout page, content: {application/json: {schema: {type: object, required: [url], properties: {url: {type: string}}}}}}
-        "400": {$ref: "#/components/responses/Error"}
-        "401": {$ref: "#/components/responses/Error"}
-  /v1/billing/webhook:
-    post:
-      summary: Payment provider events (D49). No sign-in; the Stripe-Signature header is verified over the raw body.
-      description: An event id seen before changes nothing and still answers 200.
-      security: []
-      parameters:
-        - {name: Stripe-Signature, in: header, required: true, schema: {type: string}}
-      requestBody:
-        required: true
-        content: {application/json: {schema: {type: object}}}
-      responses:
-        "200": {description: Accepted}
-        "400": {$ref: "#/components/responses/Error"}
   /v1/courses/{id}/share:
     post:
       summary: Make a share link for my course. It carries concept names and claim text only, never quotes or notes (D50).
@@ -729,7 +699,6 @@ components:
         time_zone: {type: string, description: IANA zone name}
         consent_version: {type: string, nullable: true, description: "Only on GET /v1/me. Latest consent text version I accepted, or null (D44)."}
         is_instructor: {type: boolean, description: "Set by Cris only (D51)."}
-        plan: {allOf: [{$ref: "#/components/schemas/PlanName"}], nullable: true, description: "Only on GET /v1/me. My paid plan, or null while billing is off or unpaid (D49)."}
     UploadStatus: {type: string, enum: [reading, needs_checking, ready]}
     PageStatus: {type: string, enum: [needs_checking, ready]}
     BlockKind: {type: string, enum: [text, math, heading, figure]}
@@ -969,17 +938,6 @@ components:
         disputes: {type: array, items: {$ref: "#/components/schemas/Dispute"}}
         review_events: {type: array, items: {$ref: "#/components/schemas/ReviewEvent"}}
         imports: {type: array, items: {$ref: "#/components/schemas/ImportJob"}}
-    PlanName: {type: string, enum: [month, term]}
-    EntitlementStatus: {type: string, enum: [active, past_due, canceled]}
-    BillingStatus:
-      type: object
-      required: [enabled, entitled, plan, status, period_end]
-      properties:
-        enabled: {type: boolean}
-        entitled: {type: boolean}
-        plan: {allOf: [{$ref: "#/components/schemas/PlanName"}], nullable: true}
-        status: {allOf: [{$ref: "#/components/schemas/EntitlementStatus"}], nullable: true}
-        period_end: {type: string, format: date-time, nullable: true}
     Share:
       type: object
       required: [id, subject_id, includes_sources, created_at, revoked_at]

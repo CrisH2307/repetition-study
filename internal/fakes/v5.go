@@ -3,7 +3,6 @@ package fakes
 import (
 	"context"
 	"encoding/hex"
-	"encoding/json"
 	"sync"
 	"time"
 
@@ -13,128 +12,9 @@ import (
 // Contract v5 fakes. In memory, scoped to the user id they are given.
 
 var (
-	_ domain.BillingStore = (*BillingStore)(nil)
-	_ domain.Billing      = (*Billing)(nil)
-	_ domain.ShareStore   = (*ShareStore)(nil)
-	_ domain.Sharing      = (*Sharing)(nil)
+	_ domain.ShareStore = (*ShareStore)(nil)
+	_ domain.Sharing    = (*Sharing)(nil)
 )
-
-type BillingStore struct {
-	mu     sync.Mutex
-	ents   map[string]domain.Entitlement // by user
-	events map[string]domain.BillingEvent
-}
-
-func (b *BillingStore) Entitlement(_ context.Context, user string) (domain.Entitlement, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	e, ok := b.ents[user]
-	if !ok {
-		return domain.Entitlement{}, domain.ErrNotFound
-	}
-	return e, nil
-}
-
-func (b *BillingStore) UserByCustomer(_ context.Context, customer string) (string, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	for u, e := range b.ents {
-		if e.CustomerID == customer {
-			return u, nil
-		}
-	}
-	return "", domain.ErrNotFound
-}
-
-func (b *BillingStore) ApplyEvent(_ context.Context, ev domain.BillingEvent, user string, e *domain.Entitlement) (bool, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	if b.events == nil {
-		b.events, b.ents = map[string]domain.BillingEvent{}, map[string]domain.Entitlement{}
-	}
-	if _, seen := b.events[ev.EventID]; seen {
-		return false, nil
-	}
-	b.events[ev.EventID] = ev
-	if e != nil {
-		b.ents[user] = *e
-	}
-	return true, nil
-}
-
-// Billing accepts the signature "valid" only. A webhook body
-// {"id","type","user_id","plan"} grants that plan for 30 days from Clock.
-type Billing struct {
-	Enabled bool
-	Store   *BillingStore
-	Clock   domain.Clock
-}
-
-func (b *Billing) now() time.Time {
-	if b.Clock == nil {
-		return Epoch
-	}
-	return b.Clock.Now()
-}
-
-func (b *Billing) Status(ctx context.Context, user string) (domain.BillingStatus, error) {
-	if !b.Enabled {
-		return domain.BillingStatus{Entitled: true}, nil
-	}
-	e, err := b.Store.Entitlement(ctx, user)
-	if err == domain.ErrNotFound {
-		return domain.BillingStatus{Enabled: true}, nil
-	}
-	if err != nil {
-		return domain.BillingStatus{}, err
-	}
-	return domain.BillingStatus{Enabled: true, Entitled: b.active(e), Plan: &e.Plan, Status: &e.Status, PeriodEnd: &e.PeriodEnd}, nil
-}
-
-func (b *Billing) active(e domain.Entitlement) bool {
-	return e.Status == domain.EntitlementActive && e.PeriodEnd.After(b.now())
-}
-
-func (b *Billing) CheckoutURL(_ context.Context, user string, plan domain.PlanName) (string, error) {
-	if !b.Enabled {
-		return "", &domain.UserError{Msg: "Paid plans are not open yet."}
-	}
-	if plan != domain.PlanMonth && plan != domain.PlanTerm {
-		return "", &domain.UserError{Msg: "Pick month or term."}
-	}
-	return "https://checkout.test/" + user + "/" + string(plan), nil
-}
-
-func (b *Billing) HandleWebhook(ctx context.Context, body []byte, sig string) error {
-	if sig != "valid" {
-		return domain.ErrBadSignature
-	}
-	var in struct {
-		ID     string          `json:"id"`
-		Type   string          `json:"type"`
-		UserID string          `json:"user_id"`
-		Plan   domain.PlanName `json:"plan"`
-	}
-	if err := json.Unmarshal(body, &in); err != nil || in.ID == "" {
-		return domain.ErrBadSignature
-	}
-	var e *domain.Entitlement
-	if in.UserID != "" {
-		e = &domain.Entitlement{Plan: in.Plan, Status: domain.EntitlementActive,
-			PeriodEnd: b.now().Add(30 * 24 * time.Hour), CustomerID: "cus_" + in.UserID}
-		if in.Plan == domain.PlanMonth {
-			s := "sub_" + in.UserID
-			e.SubscriptionID = &s
-		}
-	}
-	_, err := b.Store.ApplyEvent(ctx, domain.BillingEvent{EventID: in.ID, Type: in.Type, ReceivedAt: b.now(), Payload: body}, in.UserID, e)
-	return err
-}
-
-func (b *Billing) Entitled(ctx context.Context, user string) (bool, error) {
-	st, err := b.Status(ctx, user)
-	return st.Entitled, err
-}
 
 // ShareStore keeps links keyed by id and by the hex of the token hash.
 type ShareStore struct {

@@ -9,32 +9,6 @@ import (
 	"github.com/CrisH2307/repetition-study/internal/fakes"
 )
 
-func TestBillingFake(t *testing.T) {
-	ctx := context.Background()
-	b := &fakes.Billing{Store: &fakes.BillingStore{}}
-	if ok, _ := b.Entitled(ctx, "u1"); !ok {
-		t.Fatal("billing off must entitle everyone")
-	}
-	b.Enabled = true
-	if ok, _ := b.Entitled(ctx, "u1"); ok {
-		t.Fatal("unpaid user entitled")
-	}
-	if err := b.HandleWebhook(ctx, []byte(`{"id":"ev1"}`), "forged"); !errors.Is(err, domain.ErrBadSignature) {
-		t.Fatalf("bad signature: %v", err)
-	}
-	body := []byte(`{"id":"ev1","type":"checkout.session.completed","user_id":"u1","plan":"month"}`)
-	if err := b.HandleWebhook(ctx, body, "valid"); err != nil {
-		t.Fatal(err)
-	}
-	if ok, _ := b.Entitled(ctx, "u1"); !ok {
-		t.Fatal("paid user not entitled")
-	}
-	applied, err := b.Store.ApplyEvent(ctx, domain.BillingEvent{EventID: "ev1"}, "u1", nil)
-	if err != nil || applied {
-		t.Fatalf("replayed event applied again: %v %v", applied, err)
-	}
-}
-
 func TestSharingFake(t *testing.T) {
 	ctx := context.Background()
 	pc := domain.PackClaim{Text: "t", Kind: domain.KindDefinition}

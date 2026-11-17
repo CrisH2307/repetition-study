@@ -331,8 +331,8 @@ func TestContractV4Checks(t *testing.T) {
 	}
 }
 
-// Needs a migrated database. The v5 checks keep billing and share rows whole,
-// and deleting a user takes their entitlement and share links with them.
+// Needs a migrated database. The v5 checks keep share rows whole, and deleting
+// a user takes their share links with them.
 func TestContractV5Checks(t *testing.T) {
 	url := os.Getenv("DATABASE_URL")
 	if url == "" {
@@ -364,16 +364,9 @@ func TestContractV5Checks(t *testing.T) {
 	u, s := "'"+userID+"'", "'"+subjectID+"'"
 	hash := `'\x` + strings.Repeat("ab", 32) + `'`
 	ok := map[string]string{
-		"month": `INSERT INTO entitlements (user_id, plan, status, period_end, customer_id, subscription_id) VALUES (` + u + `, 'month', 'active', now(), 'cus_1', 'sub_1')`,
-		"event": `INSERT INTO billing_events (event_id, event_type, payload) VALUES ('evt_1', 'checkout.session.completed', '{}')`,
 		"share": `INSERT INTO shared_packs (owner_id, subject_id, token_hash) VALUES (` + u + `, ` + s + `, ` + hash + `)`,
 	}
 	bad := map[string]string{
-		"second entitlement":     `INSERT INTO entitlements (user_id, plan, status, period_end, customer_id) VALUES (` + u + `, 'term', 'active', now(), 'cus_2')`,
-		"month without sub":      `INSERT INTO entitlements (user_id, plan, status, period_end, customer_id) SELECT id, 'month', 'active', now(), 'cus_3' FROM users WHERE id <> ` + u + ` LIMIT 1`,
-		"unknown plan":           `INSERT INTO entitlements (user_id, plan, status, period_end, customer_id) SELECT id, 'year', 'active', now(), 'cus_4' FROM users WHERE id <> ` + u + ` LIMIT 1`,
-		"replayed event":         `INSERT INTO billing_events (event_id, event_type, payload) VALUES ('evt_1', 'x', '{}')`,
-		"payload not an object":  `INSERT INTO billing_events (event_id, event_type, payload) VALUES ('evt_2', 'x', '[]')`,
 		"same token twice":       `INSERT INTO shared_packs (owner_id, subject_id, token_hash) VALUES (` + u + `, ` + s + `, ` + hash + `)`,
 		"short token hash":       `INSERT INTO shared_packs (owner_id, subject_id, token_hash) VALUES (` + u + `, ` + s + `, '\xab')`,
 		"revoked before created": `INSERT INTO shared_packs (owner_id, subject_id, token_hash, created_at, revoked_at) VALUES (` + u + `, ` + s + `, '\x` + strings.Repeat("cd", 32) + `', now(), now() - interval '1 day')`,
@@ -403,7 +396,7 @@ func TestContractV5Checks(t *testing.T) {
 		t.Fatalf("v5 rows block account delete: %v", err)
 	}
 	var left int
-	if err := tx.QueryRow(ctx, `SELECT (SELECT count(*) FROM entitlements WHERE user_id = $1) + (SELECT count(*) FROM shared_packs WHERE owner_id = $1)`, userID).Scan(&left); err != nil || left != 0 {
+	if err := tx.QueryRow(ctx, `SELECT count(*) FROM shared_packs WHERE owner_id = $1`, userID).Scan(&left); err != nil || left != 0 {
 		t.Fatalf("rows left after delete: %d %v", left, err)
 	}
 }
