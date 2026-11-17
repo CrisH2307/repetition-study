@@ -64,3 +64,35 @@ func TestMonday(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestAddCost(t *testing.T) {
+	ms := &fakes.MetricsStore{Weeks: []domain.WeekCounts{
+		{WeekStart: d("2026-10-26"), CheckedSessions: 3},
+		{WeekStart: d("2026-11-02"), CheckedSessions: 2},
+		{WeekStart: d("2026-11-09"), CheckedSessions: 2},
+		{WeekStart: d("2026-11-16")}, // nothing checked
+	}}
+	r, err := Compute(context.Background(), ms, d("2026-10-26"), d("2026-11-23"), d("2026-11-23"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := &fakes.SpendLedger{}
+	l.Add(context.Background(), d("2026-10-30"), 1.5)
+	l.Add(context.Background(), d("2026-11-05"), 2)
+	if err := AddCost(context.Background(), &r, l); err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Months) != 2 || r.Months[0].CostPerChecked != 0.5 || r.Months[1].CostPerChecked != 0.5 || r.Months[1].Checked != 4 {
+		t.Fatalf("months %+v", r.Months)
+	}
+	var b bytes.Buffer
+	WriteCSV(&b, r, nil, "s")
+	if !strings.Contains(b.String(), "2026-11,2.0000,4,0.5000") {
+		t.Fatalf("csv:\n%s", b.String())
+	}
+	r2 := Report{Weeks: []Week{{WeekStart: d("2026-11-02")}}}
+	AddCost(context.Background(), &r2, l)
+	if r2.Months[0].CostPerChecked != -1 {
+		t.Fatalf("no checked sessions must give n/a, got %+v", r2.Months)
+	}
+}
