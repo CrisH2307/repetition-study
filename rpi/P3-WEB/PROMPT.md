@@ -1,2 +1,2 @@
 Unit P3-WEB, wave 3. Branch `feature/web-launch`. Sonnet, medium. Labels `User Story`, `phase-3`, `wave-3`.
-Files: `web/`, `rpi/P3-WEB/`. Settings gains Plan (hidden while billing is off; shows plan and a Checkout button when on). Course screen: "Share key ideas" (copy link, revoke) and "Import from a link" with the per-claim "needs a quote" list. Instructor badge on instructor packs. Same look, minimal words, keep axe and Playwright green.
+Files: `web/`, `rpi/P3-WEB/`. Course screen: "Share key ideas" (copy link, revoke) and "Import from a link" with the per-claim "needs a quote" list. Instructor badge on instructor packs. Same look, minimal words, keep axe and Playwright green.

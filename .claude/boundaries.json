@@ -386,15 +386,6 @@
       "rpi/P3-LOAD/"
     ]
   },
-  "P3-BILLING": {
-    "branch": "feature/billing",
-    "allow": [
-      "internal/billing/",
-      "internal/store/billing.go",
-      "internal/store/billing_test.go",
-      "rpi/P3-BILLING/"
-    ]
-  },
   "P3-SHARE": {
     "branch": "feature/pack-sharing",
     "allow": [
@@ -418,6 +409,20 @@
     "allow": [
       "web/",
       "rpi/P3-WEB/"
+    ]
+  },
+  "P3-HARDEN": {
+    "branch": "fix/security-gaps",
+    "allow": [
+      "internal/auth/",
+      "cmd/invite/",
+      "cmd/api/",
+      "internal/app/middleware.go",
+      "internal/app/middleware_test.go",
+      "internal/app/v3.go",
+      "internal/app/v3_test.go",
+      "docs/SECURITY.md",
+      "rpi/P3-HARDEN/"
     ]
   }
 }
