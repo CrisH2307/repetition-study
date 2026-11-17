@@ -4,8 +4,8 @@
   "buildCommand": "cd web && npm run build",
   "outputDirectory": "web/dist",
   "rewrites": [
-    { "source": "/v1/:path*", "destination": "https://space-repetition-api.fly.dev/v1/:path*" },
-    { "source": "/healthz", "destination": "https://space-repetition-api.fly.dev/healthz" },
+    { "source": "/v1/:path*", "destination": "https://repetition-study.fly.dev/v1/:path*" },
+    { "source": "/healthz", "destination": "https://repetition-study.fly.dev/healthz" },
     { "source": "/((?!v1/|healthz).*)", "destination": "/index.html" }
   ]
 }
