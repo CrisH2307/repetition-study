@@ -22,7 +22,7 @@ test('axe: sign-in states, Today, Week, Courses, Course, Settings', async ({ pag
   await page.goto('/invite#demo')
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
   await axe(page)
-  for (const p of ['/#/week', '/#/courses', COURSE, '/#/settings']) {
+  for (const p of ['/#/week', '/#/courses', COURSE, '/#/settings', '/#/shared/instructor']) {
     await page.goto(p)
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
     await axe(page)
