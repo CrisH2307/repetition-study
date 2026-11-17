@@ -3,6 +3,7 @@ package migrations_test
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -327,5 +328,82 @@ func TestContractV4Checks(t *testing.T) {
 			t.Errorf("%s accepted", name)
 		}
 		sp.Rollback(ctx)
+	}
+}
+
+// Needs a migrated database. The v5 checks keep billing and share rows whole,
+// and deleting a user takes their entitlement and share links with them.
+func TestContractV5Checks(t *testing.T) {
+	url := os.Getenv("DATABASE_URL")
+	if url == "" {
+		t.Skip("DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close(ctx)
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx) // leaves no rows
+
+	var userID, subjectID string
+	var instructor bool
+	if err := tx.QueryRow(ctx, `INSERT INTO users (name) VALUES ('v5') RETURNING id, is_instructor`).Scan(&userID, &instructor); err != nil {
+		t.Fatal(err)
+	}
+	if instructor {
+		t.Fatal("new user is an instructor by default")
+	}
+	if err := tx.QueryRow(ctx, `INSERT INTO subjects (user_id, name, weekly_hours, level) VALUES ($1, 's', 1, 'beginner') RETURNING id`, userID).Scan(&subjectID); err != nil {
+		t.Fatal(err)
+	}
+	u, s := "'"+userID+"'", "'"+subjectID+"'"
+	hash := `'\x` + strings.Repeat("ab", 32) + `'`
+	ok := map[string]string{
+		"month": `INSERT INTO entitlements (user_id, plan, status, period_end, customer_id, subscription_id) VALUES (` + u + `, 'month', 'active', now(), 'cus_1', 'sub_1')`,
+		"event": `INSERT INTO billing_events (event_id, event_type, payload) VALUES ('evt_1', 'checkout.session.completed', '{}')`,
+		"share": `INSERT INTO shared_packs (owner_id, subject_id, token_hash) VALUES (` + u + `, ` + s + `, ` + hash + `)`,
+	}
+	bad := map[string]string{
+		"second entitlement":     `INSERT INTO entitlements (user_id, plan, status, period_end, customer_id) VALUES (` + u + `, 'term', 'active', now(), 'cus_2')`,
+		"month without sub":      `INSERT INTO entitlements (user_id, plan, status, period_end, customer_id) SELECT id, 'month', 'active', now(), 'cus_3' FROM users WHERE id <> ` + u + ` LIMIT 1`,
+		"unknown plan":           `INSERT INTO entitlements (user_id, plan, status, period_end, customer_id) SELECT id, 'year', 'active', now(), 'cus_4' FROM users WHERE id <> ` + u + ` LIMIT 1`,
+		"replayed event":         `INSERT INTO billing_events (event_id, event_type, payload) VALUES ('evt_1', 'x', '{}')`,
+		"payload not an object":  `INSERT INTO billing_events (event_id, event_type, payload) VALUES ('evt_2', 'x', '[]')`,
+		"same token twice":       `INSERT INTO shared_packs (owner_id, subject_id, token_hash) VALUES (` + u + `, ` + s + `, ` + hash + `)`,
+		"short token hash":       `INSERT INTO shared_packs (owner_id, subject_id, token_hash) VALUES (` + u + `, ` + s + `, '\xab')`,
+		"revoked before created": `INSERT INTO shared_packs (owner_id, subject_id, token_hash, created_at, revoked_at) VALUES (` + u + `, ` + s + `, '\x` + strings.Repeat("cd", 32) + `', now(), now() - interval '1 day')`,
+	}
+	// ok runs first so the duplicates have something to collide with.
+	for name, q := range ok {
+		if _, err := tx.Exec(ctx, q); err != nil {
+			t.Errorf("%s rejected: %v", name, err)
+		}
+	}
+	for name, q := range bad {
+		sp, err := tx.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tag, err := sp.Exec(ctx, q); err == nil && tag.RowsAffected() > 0 {
+			t.Errorf("%s accepted", name)
+		}
+		sp.Rollback(ctx)
+	}
+
+	// The delete-account path removes subjects then the user; v5 rows must not block it.
+	if _, err := tx.Exec(ctx, `DELETE FROM subjects WHERE user_id = $1`, userID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM users WHERE id = $1`, userID); err != nil {
+		t.Fatalf("v5 rows block account delete: %v", err)
+	}
+	var left int
+	if err := tx.QueryRow(ctx, `SELECT (SELECT count(*) FROM entitlements WHERE user_id = $1) + (SELECT count(*) FROM shared_packs WHERE owner_id = $1)`, userID).Scan(&left); err != nil || left != 0 {
+		t.Fatalf("rows left after delete: %d %v", left, err)
 	}
 }
