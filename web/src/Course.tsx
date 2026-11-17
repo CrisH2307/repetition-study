@@ -3,8 +3,8 @@ import { Math } from './Math'
 import { WORDS } from './Teach'
 import { Start, StartButton } from './App'
 import {
-  ClaimKind, CourseView, Page, SourceBlock, StudyCard, Subject, Upload,
-  addClaim, addConcept, addCourse, courseView, getPage, getUpload, listBlocks, listCourses, listPages, markReady, savePage, uploadNotes,
+  ClaimKind, CourseView, ImportJob, Page, SourceBlock, StudyCard, Subject, Upload,
+  addClaim, addConcept, addCourse, courseView, getImport, getPage, importCsv, getUpload, listBlocks, listCourses, listPages, markReady, savePage, uploadNotes,
 } from './api'
 
 const msg = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong. Please try again.')
@@ -55,6 +55,7 @@ export function Course({ id, start }: { id: string; start: Start }) {
       <section>
         <h2>Course notes</h2>
         <p className="note">Only ready notes are quoted in corrections.</p>
+        {v.notes.length === 0 && <p>No notes yet. Add a PDF or paste text below.</p>}
         <ul className="plain">
           {v.notes.map((n) => (
             <li key={n.id} className="topic">
@@ -69,8 +70,10 @@ export function Course({ id, start }: { id: string; start: Start }) {
       </section>
       <section>
         <h2>Study cards</h2>
+        {v.cards.length === 0 && <p>No topics yet. Add one below.</p>}
         {v.cards.map((c) => <Card key={c.concept_id} c={c} course={id} start={start} onChange={load} />)}
         <AddTopic course={id} onDone={load} />
+        <ImportForm course={id} onDone={load} />
       </section>
       <section>
         <h2>Mistakes</h2>
@@ -183,6 +186,41 @@ function AddClaim({ concept, course, onDone }: { concept: string; course: string
       <div className="note">Keep only the words that back up the idea. They must match the notes exactly.</div>
       {err && <div className="error" role="alert">{err}</div>}
       <button disabled={!text.trim() || !block || !quote.trim()}>Add key idea</button>
+    </form>
+  )
+}
+
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+function ImportForm({ course, onDone }: { course: string; onDone: () => void }) {
+  const [file, setFile] = useState<File | null>(null)
+  const [job, setJob] = useState<ImportJob | null>(null)
+  const [err, setErr] = useState('')
+  const send = async (e: FormEvent) => {
+    e.preventDefault(); setErr(''); setJob(null)
+    const f = new FormData()
+    f.append('file', file!)
+    try {
+      let j = await importCsv(course, f)
+      setJob(j)
+      while (j.status === 'running') { await wait(1000); setJob((j = await getImport(j.id))) }
+      onDone()
+    } catch (e) { setErr(msg(e)) }
+  }
+  const running = job?.status === 'running'
+  return (
+    <form className="card" onSubmit={send} aria-label="Import from a CSV file">
+      <h3>Import from a CSV file</h3>
+      <p className="note">Columns: concept, claim, kind, quote. Each quote must be exact words from a Ready page.</p>
+      <label>CSV file <input type="file" accept=".csv,text/csv" onChange={(e) => setFile(e.target.files?.[0] ?? null)} /></label>
+      {err && <div className="error" role="alert">{err}</div>}
+      <button disabled={!file || running}>{running ? 'Importing...' : 'Import'}</button>
+      {job && !running && (
+        <div role="status">
+          <p>{job.status === 'failed' ? 'The import failed. ' : ''}{job.rows_imported} of {job.rows_total} rows imported.</p>
+          {job.row_errors.length > 0 && <ul>{job.row_errors.map((r) => <li key={r.row}>Line {r.row}: {r.error}</li>)}</ul>}
+        </div>
+      )}
     </form>
   )
 }
