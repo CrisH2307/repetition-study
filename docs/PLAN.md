@@ -8,7 +8,7 @@ A student explains a concept in a derivation-heavy course, typing LaTeX. An AI s
 
 ## Where we are
 
-Phase 1 and Phase 2 shipped to `main` in release #139 and are deployed: the web app on Vercel and the API on Fly.io Toronto. Phase 3 (billing, sharing, landing site) waits for gate G2 and Cris. Dino's test of the live site is #138. The notes below are the Phase 0 history.
+Phase 1 and Phase 2 shipped to `main` in release #139 and are deployed: the web app on Vercel and the API on Fly.io Toronto. Phase 3 (sharing, landing site, accessibility, hardening) is in progress; billing is deferred (D49). Dino's test of the live site is #138. The notes below are the Phase 0 history.
 
 Built and merged into `qa`: contract v2, citation verification (`internal/cite`), Postgres store, scheduler fixes, planner time zones, a vendor-neutral LLM layer with metering and a spend cap, the outage state (`unchecked`, no schedule change), the API handlers, a typed teach page in `web/`, never-taught concepts counting as due, a `fake-down` checker switch, `cmd/evalcheck` running all 8 gate suites, and frozen human labels (Dino and a classmate, kappa 0.964, 2 settled).
 
