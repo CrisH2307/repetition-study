@@ -135,7 +135,7 @@ export function mockApi(): Plugin {
             return json(200, { subject_id: b().subject_id, concepts_added: 1, claims_added: 1, uploads_copied: 0,
               needs_quote: [{ concept_id: C1, claim: pack(false).concepts[0].claims[1] }] })
           }
-          const live = seg[1] === 'demo' || shares.some((x) => x.token === seg[1] && !x.revoked_at)
+          const live = ['demo', 'instructor'].includes(seg[1]) || shares.some((x) => x.token === seg[1] && !x.revoked_at)
           return live ? json(200, pack(seg[1] === 'instructor')) : say(404, 'This link does not work.')
         }
         if (seg[0] === 'shares' && m === 'DELETE') {
