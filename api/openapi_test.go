@@ -105,6 +105,20 @@ func TestDomainJSONMatchesSpec(t *testing.T) {
 	for k, v := range v4 {
 		cases[k] = v
 	}
+	// Contract v5.
+	share := domain.Share{ID: "sh1", SubjectID: "sub1", CreatedAt: now, OwnerID: "u1"}
+	pc := domain.PackClaim{Text: "t", Kind: domain.KindDefinition, Required: true}
+	v5 := map[string]any{
+		"User instructor": domain.User{ID: "u1", Name: "Dino", TimeZone: "America/Toronto", IsInstructor: true},
+		"Share":           domain.Share{ID: "sh1", SubjectID: "sub1", IncludesSources: true, CreatedAt: now, RevokedAt: &now},
+		"NewShare":        domain.NewShare{Share: share, Token: "tok"},
+		"PackClaim":       pc,
+		"PackPreview":     domain.PackPreview{CourseName: "Stats", OwnerName: "Dino", Concepts: []domain.PackConcept{{Name: "n", Claims: []domain.PackClaim{pc}}}, Sources: []string{}},
+		"PackImport":      domain.PackImport{SubjectID: "sub1", ConceptsAdded: 1, ClaimsAdded: 2, NeedsQuote: []domain.NeedsQuote{{ConceptID: "c1", Claim: pc}}},
+	}
+	for k, v := range v5 {
+		cases[k] = v
+	}
 	for name, v := range cases {
 		schema, _, _ := strings.Cut(name, " ")
 		raw, err := json.Marshal(v)
@@ -124,6 +138,11 @@ func TestDomainJSONMatchesSpec(t *testing.T) {
 				t.Errorf("%s: field %q is in internal/domain but not in the spec", name, key)
 			}
 		}
+	}
+
+	// The share owner stays on the server.
+	if raw, _ := json.Marshal(domain.Share{ID: "sh1", OwnerID: "u1"}); strings.Contains(string(raw), `"u1"`) {
+		t.Errorf("Share leaks its owner: %s", raw)
 	}
 
 	// A status outside the enum must be rejected, or the check above proves nothing.
