@@ -99,11 +99,13 @@ func (s *Store) CourseView(ctx context.Context, userID, subjectID string) (domai
 		return domain.CourseView{}, err
 	}
 	v := domain.CourseView{Course: course}
-	if v.Notes, err = s.ListUploads(ctx, userID, subjectID); err != nil {
+	// The course is already checked as the user's, so list its uploads without a second lookup.
+	rows, err := s.pool.Query(ctx, uploadSelect+`AND u.subject_id = $2 GROUP BY u.id ORDER BY u.created_at, u.id`, userID, subjectID)
+	if v.Notes, err = collect(rows, err, scanUpload); err != nil {
 		return v, err
 	}
 
-	rows, err := s.pool.Query(ctx, `
+	rows, err = s.pool.Query(ctx, `
 		WITH latest AS (
 			SELECT DISTINCT ON (ts.concept_id) ts.id, ts.concept_id
 			FROM teach_sessions ts JOIN concepts c ON c.id = ts.concept_id
@@ -125,10 +127,24 @@ func (s *Store) CourseView(ctx context.Context, userID, subjectID string) (domai
 	}); err != nil {
 		return v, err
 	}
-	for i := range v.Cards {
-		if v.Cards[i].Claims, err = liveClaims(ctx, s.pool, v.Cards[i].ConceptID); err != nil {
-			return v, err
-		}
+	// One query for every card's live claims, not one per card.
+	ids := make([]string, len(v.Cards))
+	for i, c := range v.Cards {
+		ids[i] = c.ConceptID
+	}
+	rows, err = s.pool.Query(ctx, `SELECT `+claimCols+` FROM claims c WHERE c.concept_id = ANY($1::uuid[]) AND c.deleted_at IS NULL
+		ORDER BY c.created_at, c.id`, ids)
+	claims, err := collect(rows, err, scanClaim)
+	if err != nil {
+		return v, err
+	}
+	at := make(map[string]int, len(v.Cards))
+	for i, c := range v.Cards {
+		at[c.ConceptID] = i
+		v.Cards[i].Claims = []domain.Claim{}
+	}
+	for _, cl := range claims {
+		v.Cards[at[cl.ConceptID]].Claims = append(v.Cards[at[cl.ConceptID]].Claims, cl)
 	}
 
 	// A mistake needs a quote, so labels without a verified citation are left out.

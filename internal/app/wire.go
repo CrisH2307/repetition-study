@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -103,7 +105,14 @@ func Build(ctx context.Context, cfg Config) (*http.Server, func(), error) {
 	if cfg.Log == nil {
 		cfg.Log = slog.Default()
 	}
-	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
+	pcfg, err := pgxpool.ParseConfig(cfg.DatabaseURL)
+	if err != nil {
+		return nil, nil, fmt.Errorf("database: %w", err)
+	}
+	if n, err := strconv.Atoi(os.Getenv("DB_MAX_CONNS")); err == nil && n > 0 {
+		pcfg.MaxConns = int32(n) // unset or bad keeps the pgx default, max(4, CPUs)
+	}
+	pool, err := pgxpool.NewWithConfig(ctx, pcfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("database: %w", err)
 	}
