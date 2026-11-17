@@ -96,6 +96,23 @@ Not built (Cris on #107): study arms (D41) and the email digest (D42). Account d
 | 3 | P2-API | `feature/api-v4` | Handlers for the v4 endpoints, `cmd/export -deletions`, isolation test | wave 2 |
 | 3 | P2-WEB2 | `feature/web-pilot` | First-visit guide, empty states, feedback form, download and delete buttons | wave 2 |
 
+## Phase 3: launch features (planned 2026-11-16)
+
+Goal: everything a paid fall 2027 launch needs, built and switched off until Cris turns it on: billing in test mode, claim-only pack sharing with instructor packs, a public landing page, an accessibility and phone pass, and load and security checks. Decisions D48 to D53. Plan: `rpi/P3-MAIN/plan.md`. Gate G3 (review section 5) is judged after launch.
+
+Not built: per-user FSRS parameters (L-FSRSOPT) until months of review logs show a benefit on held-out reviews (D48).
+
+| Wave | Unit | Branch | Work | Needs |
+| --- | --- | --- | --- | --- |
+| 1 | P3-CONTRACT | `feature/contract-v5` | Entitlements, billing events, shared packs, instructor flag; OpenAPI | nothing |
+| 1 | P3-SITE | `feature/landing-site` | Static landing page in `site/`, placeholder name, measured numbers only | nothing |
+| 1 | P3-A11Y | `feature/a11y-pass` | Accessibility and phone pass of the web app | nothing |
+| 1 | P3-LOAD | `chore/load-security` | Load tool for non-AI paths, security checklist, restore drill | nothing |
+| 2 | P3-BILLING | `feature/billing` | Stripe Checkout and webhooks over net/http, test mode, off by default | P3-CONTRACT |
+| 2 | P3-SHARE | `feature/pack-sharing` | Share a course as claims only; instructor packs with sources | P3-CONTRACT |
+| 3 | P3-API | `feature/api-v5` | Handlers, entitlement check, isolation test | wave 2 |
+| 3 | P3-WEB | `feature/web-launch` | Plan and billing page, share and import a pack, instructor badge | P3-CONTRACT |
+
 ## Cut order if time runs short
 
 Voice input, digest, timed blocks, extra screens. Never cut the citation fix, the outage state, or the gate.
